@@ -30,6 +30,86 @@ let isRecording = false;
 let currentCaptionEl = null;
 let setupAcked = false;
 
+// ---- Firebase 중계 (폰 → 안경 자막 전송) ----
+let fbDb = null;
+let fbSession = null;
+
+function initFirebaseIfConfigured() {
+  const raw = localStorage.getItem("fb_config");
+  const session = localStorage.getItem("session_id") || "myroom01";
+  fbSession = session;
+  if (!raw) return;
+  try {
+    const config = JSON.parse(raw);
+    if (!firebase.apps.length) {
+      firebase.initializeApp(config);
+    }
+    fbDb = firebase.database();
+  } catch (e) {
+    console.log("Firebase 설정 오류:", e);
+    fbDb = null;
+  }
+}
+
+function pushCaptionToGlasses(text, isFinal) {
+  if (!fbDb || !fbSession) return;
+  fbDb
+    .ref(`sessions/${fbSession}/caption`)
+    .set({ text: text, final: !!isFinal, ts: Date.now() })
+    .catch((e) => console.log("Firebase 전송 오류:", e));
+}
+
+const fbConfigInput = document.getElementById("fbConfig");
+const sessionIdInput = document.getElementById("sessionId");
+const saveFirebaseBtn = document.getElementById("saveFirebaseBtn");
+const glassesUrlBox = document.getElementById("glassesUrlBox");
+const glassesUrlOutput = document.getElementById("glassesUrlOutput");
+const copyGlassesUrlBtn = document.getElementById("copyGlassesUrlBtn");
+
+if (fbConfigInput) fbConfigInput.value = localStorage.getItem("fb_config") || "";
+if (sessionIdInput)
+  sessionIdInput.value = localStorage.getItem("session_id") || "myroom01";
+
+if (saveFirebaseBtn) {
+  saveFirebaseBtn.addEventListener("click", () => {
+    const raw = fbConfigInput.value.trim();
+    const session = (sessionIdInput.value.trim() || "myroom01").replace(
+      /[^a-zA-Z0-9_-]/g,
+      ""
+    );
+    try {
+      JSON.parse(raw); // 유효성만 검사
+    } catch (e) {
+      alert("Firebase 설정 JSON 형식이 올바르지 않습니다. 콘솔에서 복사한 내용을 그대로 붙여넣어 주세요.");
+      return;
+    }
+    localStorage.setItem("fb_config", raw);
+    localStorage.setItem("session_id", session);
+    initFirebaseIfConfigured();
+
+    const b64 = btoa(unescape(encodeURIComponent(raw)));
+    const url = `${window.location.origin}${window.location.pathname.replace(
+      "index.html",
+      ""
+    )}glasses.html?fb=${encodeURIComponent(b64)}&session=${encodeURIComponent(
+      session
+    )}`;
+    glassesUrlOutput.value = url;
+    glassesUrlBox.style.display = "block";
+  });
+}
+
+if (copyGlassesUrlBtn) {
+  copyGlassesUrlBtn.addEventListener("click", () => {
+    glassesUrlOutput.select();
+    document.execCommand("copy");
+    copyGlassesUrlBtn.textContent = "복사됨!";
+    setTimeout(() => (copyGlassesUrlBtn.textContent = "URL 복사"), 1500);
+  });
+}
+
+initFirebaseIfConfigured();
+
 // ---- URL 파라미터로 설정 자동 구성 (안경에서 직접 타이핑하지 않아도 되도록) ----
 // 사용 예: https://cawhjj.github.io/translator/?key=AQ.xxxx&lang=한국어&model=models/gemini-live-2.5-flash-native-audio
 (function applyUrlParams() {
@@ -119,9 +199,11 @@ function appendPartialText(text) {
   if (!currentCaptionEl) startNewCaptionBubble();
   currentCaptionEl.textContent += text;
   captionArea.scrollTop = captionArea.scrollHeight;
+  pushCaptionToGlasses(currentCaptionEl.textContent, false);
 }
 function finalizeCaption() {
   if (!currentCaptionEl) return;
+  const finalText = currentCaptionEl.textContent;
   const card = currentCaptionEl.closest(".caption-card");
   if (card) {
     card.classList.remove("live-partial");
@@ -131,6 +213,7 @@ function finalizeCaption() {
     );
   }
   currentCaptionEl = null;
+  pushCaptionToGlasses(finalText, true);
 }
 
 // ---- PCM16 downsampling ----
