@@ -1,4 +1,4 @@
-const CACHE_NAME = "translator-shell-v1";
+const CACHE_NAME = "translator-shell-v2";
 const SHELL_FILES = [
   "./index.html",
   "./app.js",
@@ -25,10 +25,17 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// 앱 셸(정적 파일)만 캐시 — 실시간 API(WebSocket) 통신에는 관여하지 않음
+// 앱 셸(정적 파일) — 네트워크 우선, 실패 시에만 캐시 사용
+// (캐시 우선 방식은 코드를 업데이트해도 예전 버전이 계속 보이는 문제를 일으킴)
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    fetch(event.request)
+      .then((response) => {
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
