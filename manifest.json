@@ -1,0 +1,15 @@
+{
+  "name": "실시간 통역 자막",
+  "short_name": "통역자막",
+  "description": "스마트폰 마이크로 들리는 음성을 실시간 한국어 자막으로 표시하는 앱",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

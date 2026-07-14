@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>실시간 통역 자막</title>
+<meta name="theme-color" content="#0f172a">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="통역자막">
+<style>
+  :root{
+    --bg:#0f172a; --panel:#161f38; --accent:#22d3ee; --accent2:#a78bfa;
+    --text:#e2e8f0; --muted:#7c8aa5; --danger:#f87171; --ok:#34d399;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%; margin:0;}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;
+    display:flex; flex-direction:column; height:100dvh; overflow:hidden;
+  }
+  header{
+    padding:14px 16px calc(10px + env(safe-area-inset-top)) 16px;
+    display:flex; align-items:center; justify-content:space-between;
+    border-bottom:1px solid #1f2a47;
+  }
+  header h1{font-size:16px; margin:0; font-weight:600; letter-spacing:.2px;}
+  .status-dot{width:9px; height:9px; border-radius:50%; background:var(--muted); display:inline-block; margin-right:6px; transition:background .2s;}
+  .status-dot.connecting{background:#fbbf24;}
+  .status-dot.live{background:var(--ok); box-shadow:0 0 8px var(--ok);}
+  .status-dot.error{background:var(--danger);}
+  #statusText{font-size:12px; color:var(--muted);}
+  .icon-btn{
+    background:transparent; border:none; color:var(--text); font-size:20px;
+    padding:6px 8px; cursor:pointer; border-radius:8px;
+  }
+  .icon-btn:active{background:#1f2a47;}
+
+  main{flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:10px;}
+  .empty-state{
+    margin:auto; text-align:center; color:var(--muted); padding:0 30px; line-height:1.6; font-size:14px;
+  }
+  .empty-state b{color:var(--text);}
+
+  .caption-card{
+    background:var(--panel); border-radius:16px; padding:14px 16px;
+    border:1px solid #22304f; animation:fadeIn .25s ease;
+  }
+  .caption-card .src{font-size:12px; color:var(--muted); margin-bottom:4px;}
+  .caption-card .txt{font-size:19px; line-height:1.5; font-weight:500;}
+  .caption-card.live-partial{border-color:var(--accent); opacity:.85;}
+  @keyframes fadeIn{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);}}
+
+  footer{
+    padding:14px 16px calc(16px + env(safe-area-inset-bottom)) 16px;
+    display:flex; flex-direction:column; align-items:center; gap:10px;
+    border-top:1px solid #1f2a47; background:var(--bg);
+  }
+  #micBtn{
+    width:74px; height:74px; border-radius:50%; border:none; cursor:pointer;
+    background:linear-gradient(145deg, var(--accent), var(--accent2));
+    display:flex; align-items:center; justify-content:center; font-size:28px;
+    box-shadow:0 4px 20px rgba(34,211,238,.35);
+    transition:transform .12s;
+  }
+  #micBtn:active{transform:scale(.94);}
+  #micBtn.recording{
+    background:linear-gradient(145deg, var(--danger), #fb7185);
+    box-shadow:0 0 0 8px rgba(248,113,113,.15);
+    animation:pulse 1.4s infinite;
+  }
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(248,113,113,.35);}70%{box-shadow:0 0 0 16px rgba(248,113,113,0);}100%{box-shadow:0 0 0 0 rgba(248,113,113,0);}}
+  #hint{font-size:12px; color:var(--muted);}
+
+  /* Settings panel */
+  #settingsOverlay{
+    position:fixed; inset:0; background:rgba(0,0,0,.55); display:none;
+    align-items:flex-end; z-index:50;
+  }
+  #settingsOverlay.open{display:flex;}
+  #settingsPanel{
+    background:var(--panel); width:100%; border-radius:20px 20px 0 0;
+    padding:20px 20px calc(24px + env(safe-area-inset-bottom)) 20px;
+    max-height:80vh; overflow-y:auto;
+  }
+  #settingsPanel h2{margin:0 0 14px 0; font-size:17px;}
+  .field{margin-bottom:16px;}
+  .field label{display:block; font-size:13px; color:var(--muted); margin-bottom:6px;}
+  .field input, .field select{
+    width:100%; padding:12px; border-radius:10px; border:1px solid #2a3757;
+    background:#0f1626; color:var(--text); font-size:15px;
+  }
+  .field small{display:block; margin-top:6px; color:var(--muted); font-size:11.5px; line-height:1.5;}
+  .primary-btn{
+    width:100%; padding:14px; border-radius:12px; border:none; background:var(--accent);
+    color:#062b2f; font-weight:700; font-size:15px; cursor:pointer;
+  }
+  .link{color:var(--accent); text-decoration:none;}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1><span class="status-dot" id="statusDot"></span>실시간 통역 자막</h1>
+    <div id="statusText">대기 중 · 설정에서 API 키를 입력하세요</div>
+  </div>
+  <button class="icon-btn" id="settingsBtn" aria-label="설정">⚙️</button>
+</header>
+
+<main id="captionArea">
+  <div class="empty-state" id="emptyState">
+    🎙️<br><br>
+    마이크 버튼을 눌러 통역을 시작하세요.<br>
+    상대방(또는 주변)의 음성이 <b>한국어 자막</b>으로 이 화면에 표시됩니다.<br><br>
+    <span style="font-size:12px">※ 안경이 아닌 <b>스마트폰의 마이크와 화면</b>을 사용합니다.</span>
+  </div>
+</main>
+
+<footer>
+  <button id="micBtn" aria-label="녹음 시작/중지">🎤</button>
+  <div id="hint">눌러서 시작 · 다시 눌러서 종료</div>
+</footer>
+
+<div id="settingsOverlay">
+  <div id="settingsPanel">
+    <h2>설정</h2>
+    <div class="field">
+      <label for="apiKey">Gemini API 키</label>
+      <input type="password" id="apiKey" placeholder="AIza..." autocomplete="off" autocapitalize="off" spellcheck="false">
+      <small>
+        <a class="link" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>에서
+        무료로 발급받을 수 있습니다. 키는 이 기기의 브라우저(localStorage)에만 저장되며 외부로 전송되지 않습니다.
+        단, 브라우저 코드에 키가 노출되는 구조이므로 <b>본인만 사용하는 테스트 용도</b>로 권장합니다.
+      </small>
+    </div>
+    <div class="field">
+      <label for="targetLang">번역 대상 언어</label>
+      <select id="targetLang">
+        <option value="한국어" selected>외국어 → 한국어</option>
+        <option value="영어(English)">한국어 → 영어</option>
+        <option value="일본어(日本語)">한국어 → 일본어</option>
+        <option value="중국어(中文)">한국어 → 중국어</option>
+      </select>
+      <small>기본값은 "외국어를 들으면 한국어 자막"입니다. 상황에 맞게 바꾸세요.</small>
+    </div>
+    <div class="field">
+      <label for="modelSelect">모델</label>
+      <select id="modelSelect">
+        <option value="models/gemini-live-2.5-flash-native-audio" selected>gemini-live-2.5-flash-native-audio (권장/안정)</option>
+        <option value="models/gemini-3.1-flash-live-preview">gemini-3.1-flash-live-preview (최신 프리뷰)</option>
+      </select>
+    </div>
+    <button class="primary-btn" id="saveSettingsBtn">저장</button>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
