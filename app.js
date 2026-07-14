@@ -140,6 +140,23 @@ function int16ToBase64(int16Array) {
 }
 
 // ---- Gemini Live WebSocket ----
+function closeCodeToMessage(code, reason) {
+  const r = (reason || "").toLowerCase();
+  if (r.includes("api key") || r.includes("api_key") || code === 1008) {
+    return "API 키가 유효하지 않습니다. 설정에서 키를 다시 확인해주세요";
+  }
+  if (r.includes("quota") || r.includes("resource_exhausted")) {
+    return "사용 한도(quota) 초과입니다. 잠시 후 다시 시도해주세요";
+  }
+  if (r.includes("permission") || code === 1003) {
+    return "이 API 키로는 해당 모델을 사용할 수 없습니다. 모델을 바꿔보세요";
+  }
+  if (code === 1006) {
+    return "연결이 비정상 종료되었습니다. 네트워크 상태를 확인해주세요";
+  }
+  return `연결 실패 (코드 ${code}${reason ? ": " + reason : ""})`;
+}
+
 function buildSystemPrompt(targetLang) {
   return (
     `You are a professional real-time simultaneous interpreter. ` +
@@ -198,6 +215,7 @@ function connectWebSocket() {
 
       if (msg.setupComplete && !setupAcked) {
         setupAcked = true;
+        socket._markSettled();
         setStatus("live", "실시간 통역 중");
         resolve(socket);
         return;
@@ -220,16 +238,35 @@ function connectWebSocket() {
       }
     };
 
+    let settled = false;
+
     socket.onerror = () => {
-      setStatus("error", "연결 오류 — API 키/네트워크를 확인하세요");
-      reject(new Error("WebSocket error"));
+      if (!settled) {
+        settled = true;
+        setStatus("error", "연결 오류 — API 키/네트워크를 확인하세요");
+        reject(new Error("WebSocket error"));
+      }
     };
 
-    socket.onclose = () => {
+    socket.onclose = (event) => {
+      if (!settled) {
+        // 연결(설정 완료) 이전에 소켓이 닫힌 경우 — 원인을 화면에 표시
+        settled = true;
+        const reason = closeCodeToMessage(event.code, event.reason);
+        setStatus("error", reason);
+        reject(new Error(reason));
+        return;
+      }
       if (isRecording) {
         setStatus("error", "연결이 끊어졌습니다. 마이크를 다시 눌러주세요");
         stopRecording(false);
       }
+    };
+
+    // resolve()가 호출되는 setupComplete 분기에서도 settled = true로 표시되도록
+    // onmessage 쪽에서 settled 변수를 참조할 수 있게 socket 객체에 매달아 둠
+    socket._markSettled = () => {
+      settled = true;
     };
   });
 }
