@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>통역 자막 (안경)</title>
+<meta name="theme-color" content="#000000">
+<style>
+  :root{
+    --bg:#000000; --accent:#22d3ee; --text:#e2e8f0; --muted:#7c8aa5;
+    --danger:#f87171; --ok:#34d399;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%; margin:0; background:#000;}
+  body{
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;
+    display:flex; align-items:center; justify-content:center;
+    min-height:100dvh; overflow:hidden;
+  }
+  #stage{
+    width:min(600px, 100vmin);
+    height:min(600px, 100vmin);
+    background:var(--bg);
+    display:flex; flex-direction:column;
+    overflow:hidden; position:relative;
+  }
+  header{
+    padding:10px 14px 8px 14px;
+    display:flex; align-items:center; gap:6px;
+    border-bottom:1px solid #1f2a47; flex-shrink:0;
+  }
+  .status-dot{width:8px; height:8px; border-radius:50%; background:var(--muted); flex-shrink:0;}
+  .status-dot.live{background:var(--ok); box-shadow:0 0 8px var(--ok);}
+  .status-dot.error{background:var(--danger);}
+  #statusText{font-size:11px; color:var(--muted);}
+  main{
+    flex:1; display:flex; align-items:center; justify-content:center;
+    padding:20px; text-align:center;
+  }
+  #captionText{
+    font-size:26px; line-height:1.4; font-weight:600; color:var(--text);
+    word-break:keep-all;
+  }
+  #captionText.partial{color:var(--accent); opacity:.9;}
+  .empty{color:var(--muted); font-size:13px; line-height:1.6;}
+</style>
+</head>
+<body>
+<div id="stage">
+  <header>
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusText">연결 중…</span>
+  </header>
+  <main>
+    <div id="captionText" class="empty">폰에서 통역을 시작하면<br>여기에 자막이 표시됩니다.</div>
+  </main>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+<script src="glasses.js"></script>
+</body>
+</html>
