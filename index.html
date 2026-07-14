@@ -163,10 +163,29 @@
       </select>
     </div>
     <button class="primary-btn" id="saveSettingsBtn">저장</button>
+
+    <hr style="border:none;border-top:1px solid #22304f;margin:16px 0;">
+    <h2>안경 화면 연결 (Firebase 중계)</h2>
+    <div class="field">
+      <label for="fbConfig">Firebase 설정 (콘솔에서 복사한 JS 객체 전체 붙여넣기)</label>
+      <textarea id="fbConfig" rows="5" placeholder='{"apiKey":"...", "databaseURL":"...", ...}' style="width:100%;padding:9px;border-radius:8px;border:1px solid #2a3757;background:#0f1626;color:var(--text);font-size:11px;font-family:monospace;"></textarea>
+    </div>
+    <div class="field">
+      <label for="sessionId">세션 코드 (폰·안경 동일하게)</label>
+      <input type="text" id="sessionId" placeholder="예: myroom01" autocapitalize="off" spellcheck="false" value="myroom01">
+    </div>
+    <button class="primary-btn" id="saveFirebaseBtn" style="background:var(--accent2);">Firebase 저장 + 안경용 URL 생성</button>
+    <div class="field" id="glassesUrlBox" style="display:none;margin-top:10px;">
+      <label>안경(Meta AI 앱 Web Apps)에 등록할 URL</label>
+      <textarea id="glassesUrlOutput" rows="3" readonly style="width:100%;padding:9px;border-radius:8px;border:1px solid #2a3757;background:#0f1626;color:var(--ok);font-size:10.5px;font-family:monospace;"></textarea>
+      <button class="primary-btn" id="copyGlassesUrlBtn" style="margin-top:6px;">URL 복사</button>
+    </div>
   </div>
 </div>
 
 </div>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
