@@ -30,6 +30,33 @@ let isRecording = false;
 let currentCaptionEl = null;
 let setupAcked = false;
 
+// ---- URL 파라미터로 설정 자동 구성 (안경에서 직접 타이핑하지 않아도 되도록) ----
+// 사용 예: https://cawhjj.github.io/translator/?key=AQ.xxxx&lang=한국어&model=models/gemini-live-2.5-flash-native-audio
+(function applyUrlParams() {
+  const params = new URLSearchParams(window.location.search);
+  const key = params.get("key") || params.get("apikey");
+  const lang = params.get("lang");
+  const model = params.get("model");
+  let changed = false;
+
+  if (key) {
+    localStorage.setItem("gemini_api_key", key.trim());
+    changed = true;
+  }
+  if (lang) {
+    localStorage.setItem("target_lang", lang);
+    changed = true;
+  }
+  if (model) {
+    localStorage.setItem("live_model", model);
+    changed = true;
+  }
+  // URL에 키가 그대로 남아있지 않도록 주소창에서 파라미터 제거(히스토리 갱신, 재로드 없음)
+  if (changed && window.history && window.history.replaceState) {
+    window.history.replaceState({}, "", window.location.pathname);
+  }
+})();
+
 // ---- Settings persistence ----
 function loadSettings() {
   apiKeyInput.value = localStorage.getItem("gemini_api_key") || "";
