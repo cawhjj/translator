@@ -1,10 +1,12 @@
-const CACHE_NAME = "translator-shell-v5";
+const CACHE_NAME = "translator-shell-v6";
 const SHELL_FILES = [
   "./index.html",
   "./app.js",
   "./manifest.json",
   "./icon-192.png",
   "./icon-512.png",
+  "./glasses.html",
+  "./glasses.js",
 ];
 
 self.addEventListener("install", (event) => {
