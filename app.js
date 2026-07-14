@@ -205,7 +205,8 @@ function connectWebSocket() {
       const setupMsg = {
         setup: {
           model: model,
-          generationConfig: { responseModalities: ["TEXT"] },
+          generationConfig: { responseModalities: ["AUDIO"] },
+          outputAudioTranscription: {},
           systemInstruction: {
             parts: [{ text: buildSystemPrompt(targetLang) }],
           },
@@ -238,6 +239,11 @@ function connectWebSocket() {
 
       if (msg.serverContent) {
         const sc = msg.serverContent;
+        // 오디오 응답의 텍스트 대본(transcription)을 자막으로 사용
+        if (sc.outputTranscription && sc.outputTranscription.text) {
+          appendPartialText(sc.outputTranscription.text);
+        }
+        // 일부 모델/구성은 텍스트 파트를 함께 보낼 수 있어 예비로 처리 (오디오 파트는 무시)
         if (sc.modelTurn && Array.isArray(sc.modelTurn.parts)) {
           for (const part of sc.modelTurn.parts) {
             if (part.text) appendPartialText(part.text);
