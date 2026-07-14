@@ -185,6 +185,21 @@ function connectWebSocket() {
     setStatus("connecting", "연결 중…");
     const socket = new WebSocket(`${GEMINI_WS_BASE}?key=${apiKey}`);
     setupAcked = false;
+    let settled = false;
+
+    const timeoutId = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        setStatus(
+          "error",
+          "서버 응답이 없습니다(시간 초과). API 키의 모델 접근 권한 또는 네트워크를 확인해주세요"
+        );
+        try {
+          socket.close();
+        } catch (e) {}
+        reject(new Error("Connection timeout waiting for setupComplete"));
+      }
+    }, 10000);
 
     socket.onopen = () => {
       const setupMsg = {
@@ -236,13 +251,17 @@ function connectWebSocket() {
         // 세션이 곧 종료됨을 서버가 알림 → 조용히 재연결 준비
         console.log("Gemini goAway signal received");
       }
-    };
 
-    let settled = false;
+      if (!msg.setupComplete && !msg.serverContent && !msg.goAway) {
+        // 예상치 못한 응답(예: 에러 페이로드) — 디버깅을 위해 콘솔에 기록
+        console.log("Gemini Live: unrecognized message", msg);
+      }
+    };
 
     socket.onerror = () => {
       if (!settled) {
         settled = true;
+        clearTimeout(timeoutId);
         setStatus("error", "연결 오류 — API 키/네트워크를 확인하세요");
         reject(new Error("WebSocket error"));
       }
@@ -252,6 +271,7 @@ function connectWebSocket() {
       if (!settled) {
         // 연결(설정 완료) 이전에 소켓이 닫힌 경우 — 원인을 화면에 표시
         settled = true;
+        clearTimeout(timeoutId);
         const reason = closeCodeToMessage(event.code, event.reason);
         setStatus("error", reason);
         reject(new Error(reason));
@@ -267,6 +287,7 @@ function connectWebSocket() {
     // onmessage 쪽에서 settled 변수를 참조할 수 있게 socket 객체에 매달아 둠
     socket._markSettled = () => {
       settled = true;
+      clearTimeout(timeoutId);
     };
   });
 }
