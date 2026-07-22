@@ -34,13 +34,27 @@ let setupAcked = false;
 let fbDb = null;
 let fbSession = null;
 
+function parseFirebaseConfigInput(raw) {
+  // 1) 표준 JSON 형식 시도
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    // 2) Firebase 콘솔이 보여주는 JS 객체 리터럴(키에 따옴표 없음) 형식 시도
+    try {
+      return Function('"use strict"; return (' + raw + ")")();
+    } catch (e2) {
+      return null;
+    }
+  }
+}
+
 function initFirebaseIfConfigured() {
   const raw = localStorage.getItem("fb_config");
   const session = localStorage.getItem("session_id") || "myroom01";
   fbSession = session;
   if (!raw) return;
   try {
-    const config = JSON.parse(raw);
+    const config = JSON.parse(raw); // 저장 시 이미 표준 JSON으로 정규화해둠
     if (!firebase.apps.length) {
       firebase.initializeApp(config);
     }
@@ -77,17 +91,19 @@ if (saveFirebaseBtn) {
       /[^a-zA-Z0-9_-]/g,
       ""
     );
-    try {
-      JSON.parse(raw); // 유효성만 검사
-    } catch (e) {
-      alert("Firebase 설정 JSON 형식이 올바르지 않습니다. 콘솔에서 복사한 내용을 그대로 붙여넣어 주세요.");
+    const parsedConfig = parseFirebaseConfigInput(raw);
+    if (!parsedConfig || typeof parsedConfig !== "object") {
+      alert(
+        "Firebase 설정을 해석하지 못했습니다. Firebase 콘솔의 firebaseConfig 코드 블록에서 중괄호 { }를 포함한 내용을 그대로 붙여넣어 주세요."
+      );
       return;
     }
-    localStorage.setItem("fb_config", raw);
+    const normalizedJson = JSON.stringify(parsedConfig);
+    localStorage.setItem("fb_config", normalizedJson);
     localStorage.setItem("session_id", session);
     initFirebaseIfConfigured();
 
-    const b64 = btoa(unescape(encodeURIComponent(raw)));
+    const b64 = btoa(unescape(encodeURIComponent(normalizedJson)));
     const url = `${window.location.origin}${window.location.pathname.replace(
       "index.html",
       ""
