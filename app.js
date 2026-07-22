@@ -305,9 +305,12 @@ function closeCodeToMessage(code, reason) {
 function buildSystemPrompt(targetLang) {
   return (
     `You are a professional real-time simultaneous interpreter. ` +
-    `You will receive a live audio stream in any spoken language. ` +
-    `Continuously transcribe and translate what you hear into ${targetLang}, ` +
-    `and output ONLY the translated text as it becomes available — ` +
+    `You will receive a live audio stream in any spoken language, which may be continuous ` +
+    `with few pauses (e.g. radio, news, lectures). ` +
+    `Continuously transcribe and translate what you hear into ${targetLang} ` +
+    `AS SOON AS each short phrase or clause is complete — do not wait for a full sentence ` +
+    `or a long pause before responding. Prioritize low latency over perfect phrasing. ` +
+    `Output ONLY the translated text — ` +
     `no original-language text, no explanations, no notes, no speaker labels. ` +
     `Keep translations short and natural, emitted phrase by phrase as speech happens. ` +
     `If there is silence or the audio is unclear, output nothing.`
@@ -352,6 +355,15 @@ function connectWebSocket() {
           model: model,
           generationConfig: { responseModalities: ["AUDIO"] },
           outputAudioTranscription: {},
+          realtimeInputConfig: {
+            automaticActivityDetection: {
+              disabled: false,
+              startOfSpeechSensitivity: "START_SENSITIVITY_HIGH",
+              endOfSpeechSensitivity: "END_SENSITIVITY_HIGH",
+              prefixPaddingMs: 100,
+              silenceDurationMs: 300,
+            },
+          },
           systemInstruction: {
             parts: [{ text: buildSystemPrompt(targetLang) }],
           },
