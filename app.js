@@ -34,7 +34,20 @@ let setupAcked = false;
 let fbDb = null;
 let fbSession = null;
 
-function parseFirebaseConfigInput(raw) {
+function parseFirebaseConfigInput(rawInput) {
+  let raw = (rawInput || "")
+    .trim()
+    // 아이폰 등에서 붙여넣을 때 생길 수 있는 스마트 따옴표를 일반 따옴표로 교정
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'");
+  // 끝에 붙은 세미콜론(예: "...};") 제거
+  raw = raw.replace(/;\s*$/, "").trim();
+  // 앞뒤 중괄호가 빠졌으면 자동으로 보정
+  if (!raw.startsWith("{")) raw = "{" + raw;
+  if (!raw.endsWith("}")) raw = raw + "}";
+  // 맨 끝 항목 뒤 불필요한 쉼표 제거 (trailing comma)
+  raw = raw.replace(/,\s*}$/, "}");
+
   // 1) 표준 JSON 형식 시도
   try {
     return JSON.parse(raw);
@@ -95,6 +108,12 @@ if (saveFirebaseBtn) {
     if (!parsedConfig || typeof parsedConfig !== "object") {
       alert(
         "Firebase 설정을 해석하지 못했습니다. Firebase 콘솔의 firebaseConfig 코드 블록에서 중괄호 { }를 포함한 내용을 그대로 붙여넣어 주세요."
+      );
+      return;
+    }
+    if (!parsedConfig.databaseURL) {
+      alert(
+        "databaseURL 항목이 없습니다. Realtime Database를 아직 만들지 않았다면 Firebase 콘솔 → Build → Realtime Database에서 먼저 만든 후, 프로젝트 설정 화면을 새로고침해서 코드를 다시 복사해주세요."
       );
       return;
     }
@@ -472,12 +491,12 @@ async function startRecording() {
     );
   };
 
-  // 스피커로 마이크 소리가 재생되지 않도록 gain 0인 노드를 거쳐 destination에 연결
-  const silentGain = audioCtx.createGain();
-  silentGain.gain.value = 0;
+  // 스피커(실제 하드웨어 출력)로는 전혀 연결하지 않고, 가상의(더미) 오디오 목적지에만
+  // 연결해서 프로세서가 동작하도록 함. 실제 destination에 연결하면 iOS Safari가
+  // "통화 모드"로 전환되어 소리가 리시버(귀 스피커)로만 나오는 문제가 생기기 때문.
+  const dummyDest = audioCtx.createMediaStreamDestination();
   sourceNode.connect(processorNode);
-  processorNode.connect(silentGain);
-  silentGain.connect(audioCtx.destination);
+  processorNode.connect(dummyDest);
 
   isRecording = true;
   micBtn.classList.add("recording");
