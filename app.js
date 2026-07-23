@@ -249,6 +249,22 @@ populateMicList();
 
 const audioModeSelect = document.getElementById("audioMode");
 
+// ---- 기존 사용자 설정 마이그레이션 ----
+// 예전에 범용 모델을 직접 선택해 저장해두신 경우, 저장값이 새 기본값을 덮어써서
+// 통역 전용 모델이 적용되지 않는 문제가 있어 1회만 자동 전환
+(function migrateToTranslateModel() {
+  if (localStorage.getItem("migrated_to_translate_model") === "1") return;
+  const saved = localStorage.getItem("live_model");
+  const legacyModels = [
+    "models/gemini-live-2.5-flash-native-audio",
+    "models/gemini-3.1-flash-live-preview",
+  ];
+  if (saved && legacyModels.includes(saved)) {
+    localStorage.setItem("live_model", "models/gemini-3.5-live-translate-preview");
+  }
+  localStorage.setItem("migrated_to_translate_model", "1");
+})();
+
 // ---- Settings persistence ----
 function loadSettings() {
   apiKeyInput.value = localStorage.getItem("gemini_api_key") || "";
@@ -544,7 +560,9 @@ function connectWebSocket() {
       if (msg.setupComplete && !setupAcked) {
         setupAcked = true;
         socket._markSettled();
-        setStatus("live", "실시간 통역 중");
+        // 어떤 모델로 실제 연결됐는지 화면에 표시(설정이 반영됐는지 바로 확인 가능)
+        const shortName = model.replace("models/", "").replace("-preview", "");
+        setStatus("live", `실시간 통역 중 · ${shortName}`);
         resolve(socket);
         return;
       }
