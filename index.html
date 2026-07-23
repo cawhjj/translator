@@ -163,6 +163,14 @@
       </select>
     </div>
     <div class="field">
+      <label for="audioMode">오디오 입력 모드</label>
+      <select id="audioMode">
+        <option value="conversation" selected>대화 모드 (가까운 사람과 대면 대화)</option>
+        <option value="lecture">강연·미디어 모드 (키노트, 라디오, 스피커 소리)</option>
+      </select>
+      <small><b>키노트·강연·라디오를 들을 때는 반드시 "강연·미디어 모드"로 바꾸세요.</b> 대화 모드는 통화용 잡음/에코 제거가 켜져 있어, 멀리서 나는 소리나 스피커 음성을 잡음으로 판단해 잘라내 버립니다.</small>
+    </div>
+    <div class="field">
       <label for="micSelect">사용할 마이크 (블루투스 안경 대신 폰 마이크 선택 권장)</label>
       <select id="micSelect">
         <option value="">기본값 (자동 선택)</option>
