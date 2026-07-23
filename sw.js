@@ -1,4 +1,4 @@
-const CACHE_NAME = "translator-shell-v13";
+const CACHE_NAME = "translator-shell-v15";
 const SHELL_FILES = [
   "./index.html",
   "./app.js",
