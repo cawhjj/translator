@@ -22,6 +22,8 @@ const modelSelect = document.getElementById("modelSelect");
 
 // ---- State ----
 let ws = null;
+let sessionResumeHandle = null;
+let reconnectingInProgress = false;
 let audioCtx = null;
 let sourceNode = null;
 let processorNode = null;
@@ -78,8 +80,38 @@ function initFirebaseIfConfigured() {
   }
 }
 
+let fbPendingText = null;
+let fbPendingTimer = null;
+const FB_MIN_INTERVAL_MS = 250;
+
 function pushCaptionToGlasses(text, isFinal) {
   if (!fbDb || !fbSession) return;
+
+  // 최종 확정 자막은 즉시 전송
+  if (isFinal) {
+    if (fbPendingTimer) {
+      clearTimeout(fbPendingTimer);
+      fbPendingTimer = null;
+    }
+    fbPendingText = null;
+    writeCaption(text, true);
+    return;
+  }
+
+  // 진행 중 자막은 잘게 쪼개져 수십 번씩 오므로, 일정 간격으로 묶어서 전송
+  // (Firebase 무료 한도 소모와 안경 화면 깜빡임을 방지)
+  fbPendingText = text;
+  if (fbPendingTimer) return;
+  fbPendingTimer = setTimeout(() => {
+    fbPendingTimer = null;
+    if (fbPendingText !== null) {
+      writeCaption(fbPendingText, false);
+      fbPendingText = null;
+    }
+  }, FB_MIN_INTERVAL_MS);
+}
+
+function writeCaption(text, isFinal) {
   fbDb
     .ref(`sessions/${fbSession}/caption`)
     .set({ text: text, final: !!isFinal, ts: Date.now() })
@@ -135,11 +167,29 @@ if (saveFirebaseBtn) {
 }
 
 if (copyGlassesUrlBtn) {
-  copyGlassesUrlBtn.addEventListener("click", () => {
-    glassesUrlOutput.select();
-    document.execCommand("copy");
-    copyGlassesUrlBtn.textContent = "복사됨!";
-    setTimeout(() => (copyGlassesUrlBtn.textContent = "URL 복사"), 1500);
+  copyGlassesUrlBtn.addEventListener("click", async () => {
+    const url = glassesUrlOutput.value;
+    let ok = false;
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(url);
+        ok = true;
+      } catch (e) {}
+    }
+    if (!ok) {
+      // 구형/제한 환경 대비 예비 경로
+      try {
+        glassesUrlOutput.removeAttribute("readonly");
+        glassesUrlOutput.select();
+        glassesUrlOutput.setSelectionRange(0, url.length);
+        ok = document.execCommand("copy");
+        glassesUrlOutput.setAttribute("readonly", "");
+      } catch (e) {}
+    }
+    copyGlassesUrlBtn.textContent = ok
+      ? "복사됨!"
+      : "복사 실패 — 길게 눌러 직접 복사하세요";
+    setTimeout(() => (copyGlassesUrlBtn.textContent = "URL 복사"), 2000);
   });
 }
 
@@ -197,6 +247,8 @@ async function populateMicList() {
 if (settingsBtn) settingsBtn.addEventListener("click", populateMicList);
 populateMicList();
 
+const audioModeSelect = document.getElementById("audioMode");
+
 // ---- Settings persistence ----
 function loadSettings() {
   apiKeyInput.value = localStorage.getItem("gemini_api_key") || "";
@@ -204,12 +256,20 @@ function loadSettings() {
   modelSelect.value =
     localStorage.getItem("live_model") ||
     "models/gemini-live-2.5-flash-native-audio";
+  if (audioModeSelect)
+    audioModeSelect.value = localStorage.getItem("audio_mode") || "conversation";
 }
 function saveSettings() {
   localStorage.setItem("gemini_api_key", apiKeyInput.value.trim());
   localStorage.setItem("target_lang", targetLangSelect.value);
   localStorage.setItem("live_model", modelSelect.value);
-  if (micSelect) localStorage.setItem("mic_device_id", micSelect.value);
+  if (audioModeSelect)
+    localStorage.setItem("audio_mode", audioModeSelect.value);
+  // 마이크 목록이 아직 안 채워진 상태(권한 전 등)에서 저장하면
+  // 기존에 고른 마이크가 지워지므로, 목록이 실제로 있을 때만 반영
+  if (micSelect && micSelect.options.length > 1) {
+    localStorage.setItem("mic_device_id", micSelect.value);
+  }
 }
 loadSettings();
 
@@ -222,7 +282,14 @@ settingsOverlay.addEventListener("click", (e) => {
 saveSettingsBtn.addEventListener("click", () => {
   saveSettings();
   settingsOverlay.classList.remove("open");
-  setStatus("idle", "설정 저장됨 · 마이크를 눌러 시작하세요");
+  if (isRecording) {
+    setStatus(
+      "live",
+      "설정 저장됨 · 적용하려면 마이크를 껐다 다시 켜주세요"
+    );
+  } else {
+    setStatus("idle", "설정 저장됨 · 마이크를 눌러 시작하세요");
+  }
 });
 
 // 최초 실행 시 키가 없으면 설정창 자동으로 열기
@@ -391,6 +458,10 @@ function connectWebSocket() {
           model: model,
           generationConfig: { responseModalities: ["AUDIO"] },
           outputAudioTranscription: {},
+          contextWindowCompression: { slidingWindow: {} },
+          sessionResumption: sessionResumeHandle
+            ? { handle: sessionResumeHandle }
+            : {},
           realtimeInputConfig: {
             automaticActivityDetection: {
               disabled: false,
@@ -446,12 +517,25 @@ function connectWebSocket() {
         if (sc.interrupted) finalizeCaption();
       }
 
+      if (msg.sessionResumptionUpdate) {
+        const sru = msg.sessionResumptionUpdate;
+        if (sru.resumable && sru.newHandle) {
+          sessionResumeHandle = sru.newHandle;
+        }
+      }
+
       if (msg.goAway) {
         // 세션이 곧 종료됨을 서버가 알림 → 조용히 재연결 준비
         console.log("Gemini goAway signal received");
       }
 
-      if (!msg.setupComplete && !msg.serverContent && !msg.goAway) {
+      if (
+        !msg.setupComplete &&
+        !msg.serverContent &&
+        !msg.goAway &&
+        !msg.sessionResumptionUpdate &&
+        !msg.usageMetadata
+      ) {
         // 예상치 못한 응답(예: 에러 페이로드) — 디버깅을 위해 콘솔에 기록
         console.log("Gemini Live: unrecognized message", msg);
       }
@@ -477,8 +561,7 @@ function connectWebSocket() {
         return;
       }
       if (isRecording) {
-        setStatus("error", "연결이 끊어졌습니다. 마이크를 다시 눌러주세요");
-        stopRecording(false);
+        attemptReconnect();
       }
     };
 
@@ -491,17 +574,102 @@ function connectWebSocket() {
   });
 }
 
+let reconnectAttempts = 0;
+
+async function attemptReconnect() {
+  if (reconnectingInProgress || !isRecording) return;
+  reconnectingInProgress = true;
+  setupAcked = false;
+  reconnectAttempts++;
+
+  // 연속 실패 시 점점 간격을 늘려 재시도(최대 5초) — 서버를 두드리지 않도록
+  const backoffMs = Math.min(500 * reconnectAttempts, 5000);
+  setStatus("connecting", "세션 갱신 중 (자동 재연결)…");
+  await new Promise((r) => setTimeout(r, backoffMs));
+
+  if (!isRecording) {
+    reconnectingInProgress = false;
+    return;
+  }
+
+  try {
+    const newSocket = await connectWebSocket();
+    ws = newSocket;
+    reconnectAttempts = 0;
+    setStatus("live", "실시간 통역 중 (재연결됨)");
+  } catch (e) {
+    if (reconnectAttempts >= 5) {
+      setStatus(
+        "error",
+        "재연결에 반복 실패했습니다. 마이크를 다시 눌러 재시작해주세요"
+      );
+      reconnectAttempts = 0;
+      stopRecording(false);
+    } else {
+      reconnectingInProgress = false;
+      attemptReconnect();
+      return;
+    }
+  } finally {
+    reconnectingInProgress = false;
+  }
+}
+
+// ---- 화면 꺼짐 방지 (긴 강연 중 화면이 잠기면 오디오/연결이 끊기므로) ----
+let wakeLock = null;
+
+async function requestWakeLock() {
+  if (!("wakeLock" in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request("screen");
+    wakeLock.addEventListener("release", () => {
+      wakeLock = null;
+    });
+  } catch (e) {
+    console.log("화면 꺼짐 방지 사용 불가:", e);
+  }
+}
+
+async function releaseWakeLock() {
+  if (wakeLock) {
+    try {
+      await wakeLock.release();
+    } catch (e) {}
+    wakeLock = null;
+  }
+}
+
+// 다른 앱에 갔다가 돌아오면 화면 잠금 방지가 해제되므로 다시 요청하고,
+// iOS에서 백그라운드 진입 시 정지되는 오디오 컨텍스트도 다시 살림
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState !== "visible" || !isRecording) return;
+  if (!wakeLock) requestWakeLock();
+  if (audioCtx && audioCtx.state === "suspended") {
+    try {
+      await audioCtx.resume();
+    } catch (e) {}
+  }
+  if (ws && ws.readyState !== WebSocket.OPEN) {
+    attemptReconnect();
+  }
+});
+
 // ---- Mic capture ----
 async function startRecording() {
   const selectedMicId = localStorage.getItem("mic_device_id") || "";
+  const audioMode = localStorage.getItem("audio_mode") || "conversation";
+  // 강연·미디어 모드: 통화용 오디오 처리를 모두 끔.
+  // (에코 제거/잡음 억제는 "가까운 한 사람의 목소리"에 최적화되어 있어,
+  //  스피커에서 나오는 소리나 멀리서 들리는 강연 음성을 잡음으로 지워버림)
+  const isLectureMode = audioMode === "lecture";
   try {
     mediaStream = await navigator.mediaDevices.getUserMedia({
       audio: {
         deviceId: selectedMicId ? { exact: selectedMicId } : undefined,
         channelCount: 1,
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
+        echoCancellation: !isLectureMode,
+        noiseSuppression: !isLectureMode,
+        autoGainControl: !isLectureMode,
       },
     });
   } catch (err) {
@@ -558,8 +726,10 @@ async function startRecording() {
   processorNode.connect(dummyDest);
 
   isRecording = true;
+  reconnectAttempts = 0;
   micBtn.classList.add("recording");
   micBtn.textContent = "⏹️";
+  requestWakeLock();
 }
 
 function stopRecording(closeSocket = true) {
@@ -567,6 +737,7 @@ function stopRecording(closeSocket = true) {
   micBtn.classList.remove("recording");
   micBtn.textContent = "🎤";
   finalizeCaption();
+  releaseWakeLock();
 
   if (processorNode) {
     processorNode.disconnect();
