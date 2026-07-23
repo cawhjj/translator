@@ -254,6 +254,16 @@ function startNewCaptionBubble() {
   captionArea.appendChild(card);
   captionArea.scrollTop = captionArea.scrollHeight;
   currentCaptionEl = txt;
+
+  // 자막이 너무 많이 쌓이면 화면이 무거워지므로, 오래된 카드는 정리
+  // (긴 강연/키노트에서 갈수록 느려지는 것을 방지)
+  const MAX_CARDS = 30;
+  const cards = captionArea.querySelectorAll(".caption-card");
+  if (cards.length > MAX_CARDS) {
+    for (let i = 0; i < cards.length - MAX_CARDS; i++) {
+      cards[i].remove();
+    }
+  }
   return card;
 }
 function appendPartialText(text) {
@@ -387,7 +397,7 @@ function connectWebSocket() {
               startOfSpeechSensitivity: "START_SENSITIVITY_HIGH",
               endOfSpeechSensitivity: "END_SENSITIVITY_HIGH",
               prefixPaddingMs: 100,
-              silenceDurationMs: 300,
+              silenceDurationMs: 500,
             },
           },
           systemInstruction: {
@@ -519,6 +529,12 @@ async function startRecording() {
 
   processorNode.onaudioprocess = (e) => {
     if (!ws || ws.readyState !== WebSocket.OPEN || !setupAcked) return;
+    // 네트워크가 순간적으로 느려져 전송 버퍼가 쌓이면, 계속 밀어넣지 않고
+    // 이번 조각은 건너뜀. 그래야 지연이 계속 누적되지 않고 실시간에 가깝게 유지됨
+    // (긴 강연에서 갈수록 점점 느려지는 현상 방지)
+    const BUFFERED_LIMIT = 262144; // 256KB
+    if (ws.bufferedAmount > BUFFERED_LIMIT) return;
+
     const input = e.inputBuffer.getChannelData(0);
     const pcm16 = floatTo16kPCM(input, audioCtx.sampleRate);
     const b64 = int16ToBase64(pcm16);
