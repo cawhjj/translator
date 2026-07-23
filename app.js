@@ -255,7 +255,7 @@ function loadSettings() {
   targetLangSelect.value = localStorage.getItem("target_lang") || "한국어";
   modelSelect.value =
     localStorage.getItem("live_model") ||
-    "models/gemini-live-2.5-flash-native-audio";
+    "models/gemini-3.5-live-translate-preview";
   if (audioModeSelect)
     audioModeSelect.value = localStorage.getItem("audio_mode") || "conversation";
 }
@@ -333,13 +333,26 @@ function startNewCaptionBubble() {
   }
   return card;
 }
+let captionIdleTimer = null;
+
 function appendPartialText(text) {
   if (!currentCaptionEl) startNewCaptionBubble();
   currentCaptionEl.textContent += text;
   captionArea.scrollTop = captionArea.scrollHeight;
   pushCaptionToGlasses(currentCaptionEl.textContent, false);
+
+  // 일정 시간 새 텍스트가 없으면 자동으로 확정 처리
+  // (연속 스트리밍 모델은 turnComplete를 안 보낼 수 있어 안전장치로 둠)
+  if (captionIdleTimer) clearTimeout(captionIdleTimer);
+  captionIdleTimer = setTimeout(() => {
+    finalizeCaption();
+  }, 2000);
 }
 function finalizeCaption() {
+  if (captionIdleTimer) {
+    clearTimeout(captionIdleTimer);
+    captionIdleTimer = null;
+  }
   if (!currentCaptionEl) return;
   const finalText = currentCaptionEl.textContent;
   const card = currentCaptionEl.closest(".caption-card");
@@ -405,6 +418,17 @@ function closeCodeToMessage(code, reason) {
   return `연결 실패 (코드 ${code}${reason ? ": " + reason : ""})`;
 }
 
+// ---- 통역 전용 모델(gemini-3.5-live-translate-preview)이 요구하는 BCP-47 언어 코드 매핑 ----
+const LANG_TO_BCP47 = {
+  한국어: "ko",
+  "영어(English)": "en",
+  "일본어(日本語)": "ja",
+  "중국어(中文)": "zh",
+};
+function toBCP47(targetLang) {
+  return LANG_TO_BCP47[targetLang] || "ko";
+}
+
 function buildSystemPrompt(targetLang) {
   return (
     `You are a professional real-time simultaneous interpreter. ` +
@@ -425,7 +449,7 @@ function connectWebSocket() {
     const apiKey = localStorage.getItem("gemini_api_key");
     const model =
       localStorage.getItem("live_model") ||
-      "models/gemini-live-2.5-flash-native-audio";
+      "models/gemini-3.5-live-translate-preview";
     const targetLang = localStorage.getItem("target_lang") || "한국어";
 
     if (!apiKey) {
@@ -453,29 +477,53 @@ function connectWebSocket() {
     }, 10000);
 
     socket.onopen = () => {
-      const setupMsg = {
-        setup: {
-          model: model,
-          generationConfig: { responseModalities: ["AUDIO"] },
-          outputAudioTranscription: {},
-          contextWindowCompression: { slidingWindow: {} },
-          sessionResumption: sessionResumeHandle
-            ? { handle: sessionResumeHandle }
-            : {},
-          realtimeInputConfig: {
-            automaticActivityDetection: {
-              disabled: false,
-              startOfSpeechSensitivity: "START_SENSITIVITY_HIGH",
-              endOfSpeechSensitivity: "END_SENSITIVITY_HIGH",
-              prefixPaddingMs: 100,
-              silenceDurationMs: 500,
+      const isDedicatedTranslateModel = model === "models/gemini-3.5-live-translate-preview";
+
+      const setupMsg = isDedicatedTranslateModel
+        ? {
+            // 통역 전용 모델: 턴 단위로 기다리지 않고 말하는 동안 계속 번역하는
+            // 전용 파이프라인이라 시스템 프롬프트/VAD 튜닝이 필요 없고, 오히려
+            // 지원되지 않음(시스템 지시/툴 사용 없음). 전용 translationConfig만 사용.
+            setup: {
+              model: model,
+              generationConfig: {
+                responseModalities: ["AUDIO"],
+                inputAudioTranscription: {},
+                outputAudioTranscription: {},
+                translationConfig: {
+                  targetLanguageCode: toBCP47(targetLang),
+                  echoTargetLanguage: false,
+                },
+              },
+              contextWindowCompression: { slidingWindow: {} },
+              sessionResumption: sessionResumeHandle
+                ? { handle: sessionResumeHandle }
+                : {},
             },
-          },
-          systemInstruction: {
-            parts: [{ text: buildSystemPrompt(targetLang) }],
-          },
-        },
-      };
+          }
+        : {
+            setup: {
+              model: model,
+              generationConfig: { responseModalities: ["AUDIO"] },
+              outputAudioTranscription: {},
+              contextWindowCompression: { slidingWindow: {} },
+              sessionResumption: sessionResumeHandle
+                ? { handle: sessionResumeHandle }
+                : {},
+              realtimeInputConfig: {
+                automaticActivityDetection: {
+                  disabled: false,
+                  startOfSpeechSensitivity: "START_SENSITIVITY_HIGH",
+                  endOfSpeechSensitivity: "END_SENSITIVITY_HIGH",
+                  prefixPaddingMs: 100,
+                  silenceDurationMs: 500,
+                },
+              },
+              systemInstruction: {
+                parts: [{ text: buildSystemPrompt(targetLang) }],
+              },
+            },
+          };
       socket.send(JSON.stringify(setupMsg));
     };
 
