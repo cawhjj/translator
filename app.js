@@ -31,6 +31,7 @@ let mediaStream = null;
 let isRecording = false;
 let currentCaptionEl = null;
 let setupAcked = false;
+let useMinimalSetup = false;
 
 // ---- Firebase 중계 (폰 → 안경 자막 전송) ----
 let fbDb = null;
@@ -431,6 +432,9 @@ function closeCodeToMessage(code, reason) {
   if (code === 1006) {
     return "연결이 비정상 종료되었습니다. 네트워크 상태를 확인해주세요";
   }
+  if (code === 1007) {
+    return `설정이 거부되었습니다 (${reason || "형식 오류"})`;
+  }
   return `연결 실패 (코드 ${code}${reason ? ": " + reason : ""})`;
 }
 
@@ -495,51 +499,55 @@ function connectWebSocket() {
     socket.onopen = () => {
       const isDedicatedTranslateModel = model === "models/gemini-3.5-live-translate-preview";
 
-      const setupMsg = isDedicatedTranslateModel
-        ? {
-            // 통역 전용 모델: 턴 단위로 기다리지 않고 말하는 동안 계속 번역하는
-            // 전용 파이프라인이라 시스템 프롬프트/VAD 튜닝이 필요 없고, 오히려
-            // 지원되지 않음(시스템 지시/툴 사용 없음). 전용 translationConfig만 사용.
-            setup: {
-              model: model,
-              generationConfig: {
-                responseModalities: ["AUDIO"],
-                inputAudioTranscription: {},
-                outputAudioTranscription: {},
-                translationConfig: {
-                  targetLanguageCode: toBCP47(targetLang),
-                  echoTargetLanguage: false,
-                },
-              },
-              contextWindowCompression: { slidingWindow: {} },
-              sessionResumption: sessionResumeHandle
-                ? { handle: sessionResumeHandle }
-                : {},
+      let setupMsg;
+      if (isDedicatedTranslateModel) {
+        // 통역 전용 모델: 턴 단위로 기다리지 않고 말하는 동안 계속 번역하는
+        // 전용 파이프라인이라 시스템 프롬프트/VAD 튜닝이 필요 없음(지원도 안 됨).
+        const s = {
+          model: model,
+          generationConfig: {
+            responseModalities: ["AUDIO"],
+            translationConfig: {
+              targetLanguageCode: toBCP47(targetLang),
+              echoTargetLanguage: false,
             },
-          }
-        : {
-            setup: {
-              model: model,
-              generationConfig: { responseModalities: ["AUDIO"] },
-              outputAudioTranscription: {},
-              contextWindowCompression: { slidingWindow: {} },
-              sessionResumption: sessionResumeHandle
-                ? { handle: sessionResumeHandle }
-                : {},
-              realtimeInputConfig: {
-                automaticActivityDetection: {
-                  disabled: false,
-                  startOfSpeechSensitivity: "START_SENSITIVITY_HIGH",
-                  endOfSpeechSensitivity: "END_SENSITIVITY_HIGH",
-                  prefixPaddingMs: 100,
-                  silenceDurationMs: 500,
-                },
-              },
-              systemInstruction: {
-                parts: [{ text: buildSystemPrompt(targetLang) }],
+          },
+          outputAudioTranscription: {},
+        };
+        // 프리뷰 API라 일부 선택 항목이 거부될 수 있어, 재시도 시에는 제외
+        if (!useMinimalSetup) {
+          s.inputAudioTranscription = {};
+          s.contextWindowCompression = { slidingWindow: {} };
+          s.sessionResumption = sessionResumeHandle
+            ? { handle: sessionResumeHandle }
+            : {};
+        }
+        setupMsg = { setup: s };
+      } else {
+        setupMsg = {
+          setup: {
+            model: model,
+            generationConfig: { responseModalities: ["AUDIO"] },
+            outputAudioTranscription: {},
+            contextWindowCompression: { slidingWindow: {} },
+            sessionResumption: sessionResumeHandle
+              ? { handle: sessionResumeHandle }
+              : {},
+            realtimeInputConfig: {
+              automaticActivityDetection: {
+                disabled: false,
+                startOfSpeechSensitivity: "START_SENSITIVITY_HIGH",
+                endOfSpeechSensitivity: "END_SENSITIVITY_HIGH",
+                prefixPaddingMs: 100,
+                silenceDurationMs: 500,
               },
             },
-          };
+            systemInstruction: {
+              parts: [{ text: buildSystemPrompt(targetLang) }],
+            },
+          },
+        };
+      }
       socket.send(JSON.stringify(setupMsg));
     };
 
@@ -618,9 +626,15 @@ function connectWebSocket() {
 
     socket.onclose = (event) => {
       if (!settled) {
-        // 연결(설정 완료) 이전에 소켓이 닫힌 경우 — 원인을 화면에 표시
         settled = true;
         clearTimeout(timeoutId);
+        // 설정 항목이 거부된 경우(1007), 선택 항목을 빼고 자동으로 한 번 재시도
+        if (event.code === 1007 && !useMinimalSetup) {
+          useMinimalSetup = true;
+          console.log("설정 거부됨 — 최소 설정으로 재시도합니다:", event.reason);
+          connectWebSocket().then(resolve).catch(reject);
+          return;
+        }
         const reason = closeCodeToMessage(event.code, event.reason);
         setStatus("error", reason);
         reject(new Error(reason));
