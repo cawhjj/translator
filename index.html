@@ -162,13 +162,20 @@
         <option value="models/gemini-3.1-flash-live-preview">gemini-3.1-flash-live-preview (최신 프리뷰)</option>
       </select>
     </div>
+    <div class="field">
+      <label for="micSelect">사용할 마이크 (블루투스 안경 대신 폰 마이크 선택 권장)</label>
+      <select id="micSelect">
+        <option value="">기본값 (자동 선택)</option>
+      </select>
+      <small>목록이 비어있으면 마이크 권한을 한 번 허용한 후 이 설정을 다시 열어주세요. "iPhone Microphone" 또는 "내장 마이크"처럼 폰 자체 마이크를 선택하시면 안경 블루투스 마이크보다 음질이 훨씬 좋습니다.</small>
+    </div>
     <button class="primary-btn" id="saveSettingsBtn">저장</button>
 
     <hr style="border:none;border-top:1px solid #22304f;margin:16px 0;">
     <h2>안경 화면 연결 (Firebase 중계)</h2>
     <div class="field">
       <label for="fbConfig">Firebase 설정 (콘솔에서 복사한 JS 객체 전체 붙여넣기)</label>
-      <textarea id="fbConfig" rows="5" placeholder='{"apiKey":"...", "databaseURL":"...", ...}' style="width:100%;padding:9px;border-radius:8px;border:1px solid #2a3757;background:#0f1626;color:var(--text);font-size:11px;font-family:monospace;"></textarea>
+      <textarea id="fbConfig" rows="5" placeholder='{"apiKey":"...", "databaseURL":"...", ...}' autocapitalize="off" autocorrect="off" spellcheck="false" style="width:100%;padding:9px;border-radius:8px;border:1px solid #2a3757;background:#0f1626;color:var(--text);font-size:11px;font-family:monospace;"></textarea>
     </div>
     <div class="field">
       <label for="sessionId">세션 코드 (폰·안경 동일하게)</label>
