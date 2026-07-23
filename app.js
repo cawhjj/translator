@@ -172,6 +172,31 @@ initFirebaseIfConfigured();
   }
 })();
 
+const micSelect = document.getElementById("micSelect");
+
+async function populateMicList() {
+  if (!micSelect || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices)
+    return;
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const mics = devices.filter((d) => d.kind === "audioinput");
+    const saved = localStorage.getItem("mic_device_id") || "";
+    micSelect.innerHTML = '<option value="">기본값 (자동 선택)</option>';
+    mics.forEach((d, i) => {
+      const opt = document.createElement("option");
+      opt.value = d.deviceId;
+      opt.textContent = d.label || `마이크 ${i + 1}`;
+      if (d.deviceId === saved) opt.selected = true;
+      micSelect.appendChild(opt);
+    });
+  } catch (e) {
+    console.log("마이크 목록 조회 실패:", e);
+  }
+}
+// 라벨은 권한 허용 후에만 보이므로, 설정을 열 때마다 다시 채워봄
+if (settingsBtn) settingsBtn.addEventListener("click", populateMicList);
+populateMicList();
+
 // ---- Settings persistence ----
 function loadSettings() {
   apiKeyInput.value = localStorage.getItem("gemini_api_key") || "";
@@ -184,6 +209,7 @@ function saveSettings() {
   localStorage.setItem("gemini_api_key", apiKeyInput.value.trim());
   localStorage.setItem("target_lang", targetLangSelect.value);
   localStorage.setItem("live_model", modelSelect.value);
+  if (micSelect) localStorage.setItem("mic_device_id", micSelect.value);
 }
 loadSettings();
 
@@ -457,9 +483,11 @@ function connectWebSocket() {
 
 // ---- Mic capture ----
 async function startRecording() {
+  const selectedMicId = localStorage.getItem("mic_device_id") || "";
   try {
     mediaStream = await navigator.mediaDevices.getUserMedia({
       audio: {
+        deviceId: selectedMicId ? { exact: selectedMicId } : undefined,
         channelCount: 1,
         echoCancellation: true,
         noiseSuppression: true,
@@ -470,6 +498,9 @@ async function startRecording() {
     setStatus("error", "마이크 권한이 필요합니다");
     return;
   }
+
+  const track = mediaStream.getAudioTracks()[0];
+  if (track) console.log("사용 중인 마이크:", track.label);
 
   try {
     ws = await connectWebSocket();
