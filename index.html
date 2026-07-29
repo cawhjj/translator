@@ -49,20 +49,24 @@
   }
   .icon-btn:active{background:#1f2a47;}
 
-  main{flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:8px; min-height:0;}
+  main{
+    flex:1; overflow-y:auto; padding:16px; min-height:0;
+    font-size:17px; line-height:1.6; font-weight:500;
+  }
   .empty-state{
     margin:auto; text-align:center; color:var(--muted); padding:0 16px; line-height:1.5; font-size:12px;
+    height:100%; display:flex; align-items:center; justify-content:center;
   }
   .empty-state b{color:var(--text);}
 
-  .caption-card{
-    background:var(--panel); border-radius:12px; padding:10px 12px;
-    border:1px solid #22304f; animation:fadeIn .25s ease;
-  }
-  .caption-card .src{font-size:10px; color:var(--muted); margin-bottom:3px;}
-  .caption-card .txt{font-size:15px; line-height:1.4; font-weight:500;}
-  .caption-card.live-partial{border-color:var(--accent); opacity:.85;}
-  @keyframes fadeIn{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);}}
+  /* 연속된 하나의 글 흐름 — 문장마다 상자로 안 끊기고 이어짐 */
+  .seg{ color:var(--text); }
+  .seg.spk0{ color:#67e8f9; }
+  .seg.spk1{ color:#f9a8d4; }
+  .seg.spk2{ color:#86efac; }
+  .seg.spk3{ color:#fde68a; }
+  #liveSeg{ color:var(--accent); }
+  @keyframes fadeIn{from{opacity:0;} to{opacity:1;}}
 
   footer{
     padding:10px 14px 14px 14px;
