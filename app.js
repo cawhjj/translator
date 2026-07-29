@@ -331,7 +331,7 @@ function clearEmptyState() {
   if (emptyState) emptyState.remove();
 }
 
-const MAX_LINES = 8; // 화면에 유지할 최대 줄 수 (넘치면 오래된 줄부터 제거)
+const MAX_LINES = 50; // 화면에 유지할 최대 줄 수 (스크롤로 다시 볼 수 있어 넉넉히 유지, 넘치면 오래된 줄부터 제거)
 
 function startNewCaptionBubble() {
   clearEmptyState();
