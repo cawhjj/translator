@@ -364,13 +364,25 @@ function appendPartialText(text) {
   currentCaptionEl.textContent += text;
   captionArea.scrollTop = captionArea.scrollHeight;
   pushCaptionToGlasses(currentCaptionEl.textContent, false);
+  armCaptionIdleTimer();
+}
 
+// 통역 전용 모델은 매번 "지금까지의 전체 문장"을 보내므로 이어붙이지 않고 교체
+function replaceCaptionText(text) {
+  if (!currentCaptionEl) startNewCaptionBubble();
+  currentCaptionEl.textContent = text;
+  captionArea.scrollTop = captionArea.scrollHeight;
+  pushCaptionToGlasses(text, false);
+  armCaptionIdleTimer();
+}
+
+function armCaptionIdleTimer() {
   // 일정 시간 새 텍스트가 없으면 자동으로 확정 처리
   // (연속 스트리밍 모델은 turnComplete를 안 보낼 수 있어 안전장치로 둠)
   if (captionIdleTimer) clearTimeout(captionIdleTimer);
   captionIdleTimer = setTimeout(() => {
     finalizeCaption();
-  }, 2000);
+  }, 1500);
 }
 function finalizeCaption() {
   if (captionIdleTimer) {
@@ -584,14 +596,19 @@ function connectWebSocket() {
 
       if (msg.serverContent) {
         const sc = msg.serverContent;
+        const isCumulative = model === "models/gemini-3.5-live-translate-preview";
         // 오디오 응답의 텍스트 대본(transcription)을 자막으로 사용
         if (sc.outputTranscription && sc.outputTranscription.text) {
-          appendPartialText(sc.outputTranscription.text);
+          if (isCumulative) replaceCaptionText(sc.outputTranscription.text);
+          else appendPartialText(sc.outputTranscription.text);
         }
         // 일부 모델/구성은 텍스트 파트를 함께 보낼 수 있어 예비로 처리 (오디오 파트는 무시)
         if (sc.modelTurn && Array.isArray(sc.modelTurn.parts)) {
           for (const part of sc.modelTurn.parts) {
-            if (part.text) appendPartialText(part.text);
+            if (part.text) {
+              if (isCumulative) replaceCaptionText(part.text);
+              else appendPartialText(part.text);
+            }
           }
         }
         if (sc.turnComplete) finalizeCaption();
