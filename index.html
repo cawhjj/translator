@@ -50,23 +50,33 @@
   .icon-btn:active{background:#1f2a47;}
 
   main{
-    flex:1; overflow-y:auto; padding:16px; min-height:0;
-    font-size:17px; line-height:1.6; font-weight:500;
+    flex:1; overflow:hidden; padding:14px 18px; min-height:0;
+    display:flex; flex-direction:column; justify-content:flex-end;
+    gap:8px;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 16%, #000 100%);
+            mask-image: linear-gradient(to bottom, transparent 0%, #000 16%, #000 100%);
   }
   .empty-state{
     margin:auto; text-align:center; color:var(--muted); padding:0 16px; line-height:1.5; font-size:12px;
-    height:100%; display:flex; align-items:center; justify-content:center;
   }
   .empty-state b{color:var(--text);}
 
-  /* 연속된 하나의 글 흐름 — 문장마다 상자로 안 끊기고 이어짐 */
-  .seg{ color:var(--text); }
-  .seg.spk0{ color:#67e8f9; }
-  .seg.spk1{ color:#f9a8d4; }
-  .seg.spk2{ color:#86efac; }
-  .seg.spk3{ color:#fde68a; }
-  #liveSeg{ color:var(--accent); }
-  @keyframes fadeIn{from{opacity:0;} to{opacity:1;}}
+  /* 프롬프터식 스크롤 — 줄마다 아래에서 위로 흐르며, 지난 줄은 흐려짐 */
+  .line{
+    font-size:19px; line-height:1.45; font-weight:600;
+    word-break:keep-all;
+    opacity:.5; transition:opacity .3s;
+    animation:rise .3s ease;
+  }
+  .line.current{ opacity:1; color:var(--accent); }
+  .line.spk0{ border-left:3px solid #67e8f9; padding-left:10px; }
+  .line.spk1{ border-left:3px solid #f9a8d4; padding-left:10px; }
+  .line.spk2{ border-left:3px solid #86efac; padding-left:10px; }
+  .line.spk3{ border-left:3px solid #fde68a; padding-left:10px; }
+  @keyframes rise{
+    from{opacity:0; transform:translateY(14px);}
+    to{opacity:.5; transform:translateY(0);}
+  }
 
   footer{
     padding:10px 14px 14px 14px;
