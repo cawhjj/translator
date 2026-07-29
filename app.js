@@ -83,6 +83,7 @@ function initFirebaseIfConfigured() {
 
 let fbPendingText = null;
 let fbPendingTimer = null;
+let segmentIndex = 0; // 발화 구간마다 증가 → 안경에서 구간별 색상 구분에 사용
 const FB_MIN_INTERVAL_MS = 250;
 
 function pushCaptionToGlasses(text, isFinal) {
@@ -115,7 +116,12 @@ function pushCaptionToGlasses(text, isFinal) {
 function writeCaption(text, isFinal) {
   fbDb
     .ref(`sessions/${fbSession}/caption`)
-    .set({ text: text, final: !!isFinal, ts: Date.now() })
+    .set({
+      text: text,
+      final: !!isFinal,
+      speaker: segmentIndex,
+      ts: Date.now(),
+    })
     .catch((e) => console.log("Firebase 전송 오류:", e));
 }
 
@@ -326,6 +332,7 @@ function clearEmptyState() {
 }
 function startNewCaptionBubble() {
   clearEmptyState();
+  segmentIndex++;
   const card = document.createElement("div");
   card.className = "caption-card live-partial";
   const src = document.createElement("div");
