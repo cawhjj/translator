@@ -359,21 +359,44 @@ function startNewCaptionBubble() {
 }
 let captionIdleTimer = null;
 
+// 문장이 마침표/물음표/느낌표로 끝났으면 쉬지 않고 말을 이어가도 즉시 한 줄로 확정
+const SENTENCE_END_RE = /[.!?。!?]\s*$/;
+
 function appendPartialText(text) {
   if (!currentCaptionEl) startNewCaptionBubble();
   currentCaptionEl.textContent += text;
   captionArea.scrollTop = captionArea.scrollHeight;
   pushCaptionToGlasses(currentCaptionEl.textContent, false);
-  armCaptionIdleTimer();
+  if (SENTENCE_END_RE.test(currentCaptionEl.textContent.trim())) {
+    finalizeCaption();
+  } else {
+    armCaptionIdleTimer();
+  }
 }
 
-// 통역 전용 모델은 매번 "지금까지의 전체 문장"을 보내므로 이어붙이지 않고 교체
-function replaceCaptionText(text) {
+// 통역 전용 모델은 매번 "지금까지의 전체 문장(fullText)"을 다시 보내므로,
+// 이미 확정해서 보여준 부분(committedOffset)은 잘라내고 그 뒤에 남은 부분만 표시함
+let lastFullCumulativeText = "";
+let committedOffset = 0;
+
+function replaceCaptionText(fullText) {
+  lastFullCumulativeText = fullText;
+  if (fullText.length < committedOffset) committedOffset = 0; // 새 턴이 시작된 것으로 판단
+
+  const displayText = fullText.slice(committedOffset);
   if (!currentCaptionEl) startNewCaptionBubble();
-  currentCaptionEl.textContent = text;
+  currentCaptionEl.textContent = displayText;
   captionArea.scrollTop = captionArea.scrollHeight;
-  pushCaptionToGlasses(text, false);
-  armCaptionIdleTimer();
+  pushCaptionToGlasses(displayText, false);
+
+  // 계속 말이 이어지면 조용해지는 순간이 안 와서 한 칸에 계속 머무르므로,
+  // 문장이 끝나는 지점을 감지하면 쉬지 않고 말해도 바로 다음 줄로 넘어감
+  if (SENTENCE_END_RE.test(displayText.trim())) {
+    committedOffset = fullText.length;
+    finalizeCaption();
+  } else {
+    armCaptionIdleTimer();
+  }
 }
 
 let lastFinalizedText = "";
@@ -383,6 +406,7 @@ function armCaptionIdleTimer() {
   // (연속 스트리밍 모델은 turnComplete를 안 보낼 수 있어 안전장치로 둠)
   if (captionIdleTimer) clearTimeout(captionIdleTimer);
   captionIdleTimer = setTimeout(() => {
+    committedOffset = lastFullCumulativeText.length;
     finalizeCaption();
   }, 2500);
 }
@@ -852,6 +876,9 @@ async function startRecording() {
 
   isRecording = true;
   reconnectAttempts = 0;
+  committedOffset = 0;
+  lastFullCumulativeText = "";
+  lastFinalizedText = "";
   micBtn.classList.add("recording");
   micBtn.textContent = "⏹️";
   requestWakeLock();
