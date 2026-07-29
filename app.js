@@ -355,9 +355,20 @@ function startNewCaptionBubble() {
       cards[i].remove();
     }
   }
+
+  // 문장부호가 없거나 쉬지 않고 계속 말하는 경우를 대비한 강제 컷 타이머.
+  // 새 줄이 시작될 때마다 새로 걸어두고, 업데이트가 와도 절대 리셋하지 않음
+  // (이게 없으면 계속 말할 때 한 칸에서 영원히 갱신만 되고 다음 줄로 안 넘어감)
+  if (captionHardCapTimer) clearTimeout(captionHardCapTimer);
+  captionHardCapTimer = setTimeout(() => {
+    if (lastFullCumulativeText) committedOffset = lastFullCumulativeText.length;
+    finalizeCaption();
+  }, 4000);
+
   return card;
 }
 let captionIdleTimer = null;
+let captionHardCapTimer = null;
 
 // 문장이 마침표/물음표/느낌표로 끝났으면 쉬지 않고 말을 이어가도 즉시 한 줄로 확정
 const SENTENCE_END_RE = /[.!?。!?]\s*$/;
@@ -414,6 +425,10 @@ function finalizeCaption() {
   if (captionIdleTimer) {
     clearTimeout(captionIdleTimer);
     captionIdleTimer = null;
+  }
+  if (captionHardCapTimer) {
+    clearTimeout(captionHardCapTimer);
+    captionHardCapTimer = null;
   }
   if (!currentCaptionEl) return;
   const finalText = currentCaptionEl.textContent.trim();
