@@ -326,38 +326,33 @@ function setStatus(state, text) {
   statusText.textContent = text;
 }
 
-// ---- Caption UI (연속 흐름 방식 — 상자로 안 끊기고 이어짐) ----
+// ---- Caption UI (프롬프터식 스크롤 — 줄 단위로 아래서 위로 흐름) ----
 function clearEmptyState() {
   if (emptyState) emptyState.remove();
 }
 
+const MAX_LINES = 8; // 화면에 유지할 최대 줄 수 (넘치면 오래된 줄부터 제거)
+
 function startNewCaptionBubble() {
   clearEmptyState();
   segmentIndex++;
-  const span = document.createElement("span");
-  span.className = "seg";
-  span.id = "liveSeg";
-  captionArea.appendChild(span);
-  captionArea.scrollTop = captionArea.scrollHeight;
-  currentCaptionEl = span;
+  // 이전 줄은 '현재 진행 중' 강조를 해제(과거 줄로 전환)
+  if (currentCaptionEl) currentCaptionEl.classList.remove("current");
 
-  // 자막이 너무 길게 쌓이면 화면이 무거워지므로, 오래된 구간부터 정리
-  // (긴 강연/키노트에서 갈수록 느려지는 것을 방지)
-  const MAX_SEGMENTS = 60;
-  const segs = captionArea.querySelectorAll(".seg");
-  if (segs.length > MAX_SEGMENTS) {
-    for (let i = 0; i < segs.length - MAX_SEGMENTS; i++) {
-      const el = segs[i];
-      if (el.nextSibling && el.nextSibling.nodeType === Node.TEXT_NODE) {
-        el.nextSibling.remove(); // 뒤에 붙은 공백 텍스트 노드도 같이 제거
-      }
-      el.remove();
-    }
+  const line = document.createElement("div");
+  line.className = "line current";
+  captionArea.appendChild(line);
+  currentCaptionEl = line;
+
+  // 자막이 너무 많이 쌓이면 화면이 무거워지므로, 오래된 줄부터 정리
+  const lines = captionArea.querySelectorAll(".line");
+  if (lines.length > MAX_LINES) {
+    for (let i = 0; i < lines.length - MAX_LINES; i++) lines[i].remove();
   }
 
   // 문장부호가 없거나 쉬지 않고 계속 말하는 경우를 대비한 강제 컷 타이머.
-  // 새 구간이 시작될 때마다 새로 걸어두고, 업데이트가 와도 절대 리셋하지 않음
-  // (이게 없으면 계속 말할 때 한 구간에서 영원히 갱신만 되고 다음으로 안 넘어감)
+  // 새 줄이 시작될 때마다 새로 걸어두고, 업데이트가 와도 절대 리셋하지 않음
+  // (이게 없으면 계속 말할 때 한 줄에서 영원히 갱신만 되고 다음으로 안 넘어감)
   if (captionHardCapTimer) clearTimeout(captionHardCapTimer);
   captionHardCapTimer = setTimeout(() => {
     if (lastFullCumulativeText) committedOffset = lastFullCumulativeText.length;
@@ -431,19 +426,19 @@ function finalizeCaption() {
   }
   if (!currentCaptionEl) return;
   const finalText = currentCaptionEl.textContent.trim();
-  const span = currentCaptionEl;
+  const line = currentCaptionEl;
 
   // 직전 확정 문장과 완전히 동일하면(모델이 같은 내용을 다시 보낸 경우) 중복 표시하지 않음
   if (finalText && finalText === lastFinalizedText) {
-    span.remove();
+    line.remove();
     currentCaptionEl = null;
     return;
   }
 
-  // 확정되면 강조색(진행중 표시)을 빼고, 구간별 색상을 입혀서 흐름 속에서도 구분되게 함
-  span.id = "";
-  span.classList.add("spk" + (segmentIndex % 4));
-  span.textContent = finalText + " "; // 다음 구간과 자연스럽게 띄어쓰기로 이어지도록
+  // 확정되면 '진행 중' 강조를 빼고, 지난 줄로 표시 + 구간별 색상으로 구분
+  line.classList.remove("current");
+  line.classList.add("spk" + (segmentIndex % 4));
+  line.textContent = finalText;
 
   currentCaptionEl = null;
   if (finalText) lastFinalizedText = finalText;
