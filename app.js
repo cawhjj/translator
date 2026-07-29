@@ -326,51 +326,50 @@ function setStatus(state, text) {
   statusText.textContent = text;
 }
 
-// ---- Caption UI ----
+// ---- Caption UI (연속 흐름 방식 — 상자로 안 끊기고 이어짐) ----
 function clearEmptyState() {
   if (emptyState) emptyState.remove();
 }
+
 function startNewCaptionBubble() {
   clearEmptyState();
   segmentIndex++;
-  const card = document.createElement("div");
-  card.className = "caption-card live-partial";
-  const src = document.createElement("div");
-  src.className = "src";
-  src.textContent = "통역 중…";
-  const txt = document.createElement("div");
-  txt.className = "txt";
-  card.appendChild(src);
-  card.appendChild(txt);
-  captionArea.appendChild(card);
+  const span = document.createElement("span");
+  span.className = "seg";
+  span.id = "liveSeg";
+  captionArea.appendChild(span);
   captionArea.scrollTop = captionArea.scrollHeight;
-  currentCaptionEl = txt;
+  currentCaptionEl = span;
 
-  // 자막이 너무 많이 쌓이면 화면이 무거워지므로, 오래된 카드는 정리
+  // 자막이 너무 길게 쌓이면 화면이 무거워지므로, 오래된 구간부터 정리
   // (긴 강연/키노트에서 갈수록 느려지는 것을 방지)
-  const MAX_CARDS = 30;
-  const cards = captionArea.querySelectorAll(".caption-card");
-  if (cards.length > MAX_CARDS) {
-    for (let i = 0; i < cards.length - MAX_CARDS; i++) {
-      cards[i].remove();
+  const MAX_SEGMENTS = 60;
+  const segs = captionArea.querySelectorAll(".seg");
+  if (segs.length > MAX_SEGMENTS) {
+    for (let i = 0; i < segs.length - MAX_SEGMENTS; i++) {
+      const el = segs[i];
+      if (el.nextSibling && el.nextSibling.nodeType === Node.TEXT_NODE) {
+        el.nextSibling.remove(); // 뒤에 붙은 공백 텍스트 노드도 같이 제거
+      }
+      el.remove();
     }
   }
 
   // 문장부호가 없거나 쉬지 않고 계속 말하는 경우를 대비한 강제 컷 타이머.
-  // 새 줄이 시작될 때마다 새로 걸어두고, 업데이트가 와도 절대 리셋하지 않음
-  // (이게 없으면 계속 말할 때 한 칸에서 영원히 갱신만 되고 다음 줄로 안 넘어감)
+  // 새 구간이 시작될 때마다 새로 걸어두고, 업데이트가 와도 절대 리셋하지 않음
+  // (이게 없으면 계속 말할 때 한 구간에서 영원히 갱신만 되고 다음으로 안 넘어감)
   if (captionHardCapTimer) clearTimeout(captionHardCapTimer);
   captionHardCapTimer = setTimeout(() => {
     if (lastFullCumulativeText) committedOffset = lastFullCumulativeText.length;
     finalizeCaption();
-  }, 4000);
+  }, 6000);
 
-  return card;
+  return span;
 }
 let captionIdleTimer = null;
 let captionHardCapTimer = null;
 
-// 문장이 마침표/물음표/느낌표로 끝났으면 쉬지 않고 말을 이어가도 즉시 한 줄로 확정
+// 문장이 마침표/물음표/느낌표로 끝났으면 쉬지 않고 말을 이어가도 즉시 확정
 const SENTENCE_END_RE = /[.!?。!?]\s*$/;
 
 function appendPartialText(text) {
@@ -400,8 +399,8 @@ function replaceCaptionText(fullText) {
   captionArea.scrollTop = captionArea.scrollHeight;
   pushCaptionToGlasses(displayText, false);
 
-  // 계속 말이 이어지면 조용해지는 순간이 안 와서 한 칸에 계속 머무르므로,
-  // 문장이 끝나는 지점을 감지하면 쉬지 않고 말해도 바로 다음 줄로 넘어감
+  // 계속 말이 이어지면 조용해지는 순간이 안 와서 한 구간에 계속 머무르므로,
+  // 문장이 끝나는 지점을 감지하면 쉬지 않고 말해도 바로 다음으로 넘어감
   if (SENTENCE_END_RE.test(displayText.trim())) {
     committedOffset = fullText.length;
     finalizeCaption();
@@ -432,22 +431,20 @@ function finalizeCaption() {
   }
   if (!currentCaptionEl) return;
   const finalText = currentCaptionEl.textContent.trim();
-  const card = currentCaptionEl.closest(".caption-card");
+  const span = currentCaptionEl;
 
   // 직전 확정 문장과 완전히 동일하면(모델이 같은 내용을 다시 보낸 경우) 중복 표시하지 않음
   if (finalText && finalText === lastFinalizedText) {
-    if (card) card.remove();
+    span.remove();
     currentCaptionEl = null;
     return;
   }
 
-  if (card) {
-    card.classList.remove("live-partial");
-    card.querySelector(".src").textContent = new Date().toLocaleTimeString(
-      "ko-KR",
-      { hour: "2-digit", minute: "2-digit" }
-    );
-  }
+  // 확정되면 강조색(진행중 표시)을 빼고, 구간별 색상을 입혀서 흐름 속에서도 구분되게 함
+  span.id = "";
+  span.classList.add("spk" + (segmentIndex % 4));
+  span.textContent = finalText + " "; // 다음 구간과 자연스럽게 띄어쓰기로 이어지도록
+
   currentCaptionEl = null;
   if (finalText) lastFinalizedText = finalText;
   pushCaptionToGlasses(finalText, true);
