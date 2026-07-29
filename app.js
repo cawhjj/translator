@@ -376,13 +376,15 @@ function replaceCaptionText(text) {
   armCaptionIdleTimer();
 }
 
+let lastFinalizedText = "";
+
 function armCaptionIdleTimer() {
   // 일정 시간 새 텍스트가 없으면 자동으로 확정 처리
   // (연속 스트리밍 모델은 turnComplete를 안 보낼 수 있어 안전장치로 둠)
   if (captionIdleTimer) clearTimeout(captionIdleTimer);
   captionIdleTimer = setTimeout(() => {
     finalizeCaption();
-  }, 1500);
+  }, 2500);
 }
 function finalizeCaption() {
   if (captionIdleTimer) {
@@ -390,8 +392,16 @@ function finalizeCaption() {
     captionIdleTimer = null;
   }
   if (!currentCaptionEl) return;
-  const finalText = currentCaptionEl.textContent;
+  const finalText = currentCaptionEl.textContent.trim();
   const card = currentCaptionEl.closest(".caption-card");
+
+  // 직전 확정 문장과 완전히 동일하면(모델이 같은 내용을 다시 보낸 경우) 중복 표시하지 않음
+  if (finalText && finalText === lastFinalizedText) {
+    if (card) card.remove();
+    currentCaptionEl = null;
+    return;
+  }
+
   if (card) {
     card.classList.remove("live-partial");
     card.querySelector(".src").textContent = new Date().toLocaleTimeString(
@@ -400,6 +410,7 @@ function finalizeCaption() {
     );
   }
   currentCaptionEl = null;
+  if (finalText) lastFinalizedText = finalText;
   pushCaptionToGlasses(finalText, true);
 }
 
@@ -520,8 +531,9 @@ function connectWebSocket() {
 
       let setupMsg;
       if (isDedicatedTranslateModel) {
-        // 통역 전용 모델: 턴 단위로 기다리지 않고 말하는 동안 계속 번역하는
-        // 전용 파이프라인이라 시스템 프롬프트/VAD 튜닝이 필요 없음(지원도 안 됨).
+        // 통역 전용 모델: 기본적으로 시스템 프롬프트는 지원하지 않지만,
+        // 발화 구간을 너무 잘게 자르는 것을 완화하기 위해 VAD 설정은 시도해봄
+        // (거부되면 아래 재시도 로직에서 자동으로 제외됨)
         const s = {
           model: model,
           generationConfig: {
@@ -540,6 +552,15 @@ function connectWebSocket() {
           s.sessionResumption = sessionResumeHandle
             ? { handle: sessionResumeHandle }
             : {};
+          s.realtimeInputConfig = {
+            automaticActivityDetection: {
+              disabled: false,
+              startOfSpeechSensitivity: "START_SENSITIVITY_LOW",
+              endOfSpeechSensitivity: "END_SENSITIVITY_LOW",
+              prefixPaddingMs: 150,
+              silenceDurationMs: 800,
+            },
+          };
         }
         setupMsg = { setup: s };
       } else {
