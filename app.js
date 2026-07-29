@@ -351,15 +351,16 @@ function startNewCaptionBubble() {
   }
 
   // 문장부호가 없거나 쉬지 않고 계속 말하는 경우를 대비한 강제 컷 타이머.
-  // 새 줄이 시작될 때마다 새로 걸어두고, 업데이트가 와도 절대 리셋하지 않음
-  // (이게 없으면 계속 말할 때 한 줄에서 영원히 갱신만 되고 다음으로 안 넘어감)
+  // 화자가 실제로 말을 멈추면(무음 감지, armCaptionIdleTimer) 그때 자연스럽게 끊기고,
+  // 이 타이머는 "계속 쉬지 않고 말하는 극단적인 경우"에만 작동하는 최후의 안전장치라
+  // 간격을 길게 둬서 대화 내용이 조각조각 끊기지 않게 함
   if (captionHardCapTimer) clearTimeout(captionHardCapTimer);
   captionHardCapTimer = setTimeout(() => {
     if (lastFullCumulativeText) committedOffset = lastFullCumulativeText.length;
     finalizeCaption();
-  }, 6000);
+  }, 15000);
 
-  return span;
+  return line;
 }
 let captionIdleTimer = null;
 let captionHardCapTimer = null;
