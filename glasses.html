@@ -7,7 +7,7 @@
 <meta name="theme-color" content="#000000">
 <style>
   :root{
-    --bg:#000000; --accent:#22d3ee; --text:#e2e8f0; --muted:#7c8aa5;
+    --bg:#000000; --accent:#22d3ee; --text:#f1f5f9; --muted:#7c8aa5;
     --danger:#f87171; --ok:#34d399;
   }
   *{box-sizing:border-box;}
@@ -26,24 +26,49 @@
     overflow:hidden; position:relative;
   }
   header{
-    padding:10px 14px 8px 14px;
+    padding:8px 14px 6px 14px;
     display:flex; align-items:center; gap:6px;
-    border-bottom:1px solid #1f2a47; flex-shrink:0;
+    flex-shrink:0;
   }
-  .status-dot{width:8px; height:8px; border-radius:50%; background:var(--muted); flex-shrink:0;}
+  .status-dot{width:7px; height:7px; border-radius:50%; background:var(--muted); flex-shrink:0;}
   .status-dot.live{background:var(--ok); box-shadow:0 0 8px var(--ok);}
   .status-dot.error{background:var(--danger);}
-  #statusText{font-size:11px; color:var(--muted);}
-  main{
-    flex:1; display:flex; align-items:center; justify-content:center;
-    padding:20px; text-align:center;
+  #statusText{font-size:10px; color:var(--muted);}
+
+  /* 프롬프터식 스크롤 영역: 아래에서 위로 흐름 */
+  #feed{
+    flex:1;
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+    justify-content:flex-end;   /* 항상 최신 줄이 하단에 오도록 */
+    padding:12px 18px 18px 18px;
+    gap:10px;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 14%, #000 100%);
+            mask-image: linear-gradient(to bottom, transparent 0%, #000 14%, #000 100%);
   }
-  #captionText{
-    font-size:26px; line-height:1.4; font-weight:600; color:var(--text);
+  .line{
+    font-size:24px; line-height:1.35; font-weight:600;
     word-break:keep-all;
+    animation:rise .3s ease;
+    opacity:.55;
+    transition:opacity .3s;
   }
-  #captionText.partial{color:var(--accent); opacity:.9;}
-  .empty{color:var(--muted); font-size:13px; line-height:1.6;}
+  .line.current{ opacity:1; }        /* 가장 최신 줄은 밝게 */
+  .line.partial{ color:var(--accent); }
+  @keyframes rise{
+    from{opacity:0; transform:translateY(14px);}
+    to{opacity:.55; transform:translateY(0);}
+  }
+  /* 화자 색상 (목소리 구분) */
+  .spk0{ border-left:3px solid #22d3ee; padding-left:10px; }
+  .spk1{ border-left:3px solid #f9a8d4; padding-left:10px; }
+  .spk2{ border-left:3px solid #86efac; padding-left:10px; }
+  .spk3{ border-left:3px solid #fcd34d; padding-left:10px; }
+
+  #emptyMsg{
+    margin:auto; text-align:center; color:var(--muted); font-size:13px; line-height:1.6;
+  }
 </style>
 </head>
 <body>
@@ -52,9 +77,9 @@
     <span class="status-dot" id="statusDot"></span>
     <span id="statusText">연결 중…</span>
   </header>
-  <main>
-    <div id="captionText" class="empty">폰에서 통역을 시작하면<br>여기에 자막이 표시됩니다.</div>
-  </main>
+  <div id="feed">
+    <div id="emptyMsg">폰에서 통역을 시작하면<br>여기에 자막이 흐르며 표시됩니다.</div>
+  </div>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
