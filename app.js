@@ -356,30 +356,28 @@ function startNewCaptionBubble() {
   return line;
 }
 
-// 범용 모델용: 텍스트 조각이 하나씩 추가로 들어옴 → 현재 줄에 이어붙임
+// 통역 모델은 번역문을 짧은 조각으로 나눠 보냄 → 현재 줄에 계속 이어붙여서
+// 완전한 문장이 되도록 함. 줄 바꿈은 서버의 turnComplete 신호나 긴 침묵에서만.
 function appendPartialText(text) {
   if (!currentCaptionEl) startNewCaptionBubble();
-  currentCaptionEl.textContent += text;
+  const existing = currentCaptionEl.textContent;
+  // 조각 사이에 자연스러운 띄어쓰기 (이미 공백/문장부호로 끝나면 그대로)
+  const needsSpace =
+    existing &&
+    !/[\s([{]$/.test(existing) &&
+    !/^[\s.,!?)\]}·…]/.test(text);
+  currentCaptionEl.textContent = existing + (needsSpace ? " " : "") + text;
   captionArea.scrollTop = captionArea.scrollHeight;
   pushCaptionToGlasses(currentCaptionEl.textContent, false);
   armCaptionIdleTimer();
 }
 
-// 통역 전용 모델용: 매번 "현재 발화의 전체 문장"을 다시 보냄 → 현재 줄을 통째로 교체
-// (offset 잘라내기 방식은 오작동이 잦아, 현재 진행 중인 한 줄만 갱신하는 방식으로 단순화)
-function replaceCaptionText(fullText) {
-  if (!currentCaptionEl) startNewCaptionBubble();
-  currentCaptionEl.textContent = fullText;
-  captionArea.scrollTop = captionArea.scrollHeight;
-  pushCaptionToGlasses(fullText, false);
-  armCaptionIdleTimer();
-}
-
 function armCaptionIdleTimer() {
-  // 일정 시간 새 텍스트가 없으면(=화자가 말을 멈추면) 현재 줄을 확정하고 다음 줄 준비.
-  // 확정된 줄은 화면에 그대로 남고, 새 발화는 새 줄로 시작됨 → 문맥이 쌓임
+  // 조각이 계속 들어오는 동안은 한 줄에 누적됨. 새 조각이 한동안 없으면
+  // (=화자가 실제로 말을 멈추면) 그때 현재 줄을 확정하고 다음 줄을 준비함.
+  // 너무 짧으면 한 문장이 조각나므로 넉넉하게(6초) 둠. turnComplete가 오면 즉시 확정.
   if (captionIdleTimer) clearTimeout(captionIdleTimer);
-  captionIdleTimer = setTimeout(finalizeCaption, 3000);
+  captionIdleTimer = setTimeout(finalizeCaption, 6000);
 }
 
 function finalizeCaption() {
@@ -611,21 +609,17 @@ function connectWebSocket() {
 
       if (msg.serverContent) {
         const sc = msg.serverContent;
-        const isCumulative = model === "models/gemini-3.5-live-translate-preview";
-        // 오디오 응답의 텍스트 대본(transcription)을 자막으로 사용
+        // outputTranscription은 조각(fragment)으로 들어오므로 계속 이어붙임.
+        // (누적 전체를 준다고 가정하고 덮어쓰면 앞 단어가 사라지는 문제가 있었음)
         if (sc.outputTranscription && sc.outputTranscription.text) {
-          if (isCumulative) replaceCaptionText(sc.outputTranscription.text);
-          else appendPartialText(sc.outputTranscription.text);
+          appendPartialText(sc.outputTranscription.text);
         }
-        // 일부 모델/구성은 텍스트 파트를 함께 보낼 수 있어 예비로 처리 (오디오 파트는 무시)
         if (sc.modelTurn && Array.isArray(sc.modelTurn.parts)) {
           for (const part of sc.modelTurn.parts) {
-            if (part.text) {
-              if (isCumulative) replaceCaptionText(part.text);
-              else appendPartialText(part.text);
-            }
+            if (part.text) appendPartialText(part.text);
           }
         }
+        // 한 발화(턴)가 끝났다는 서버 신호가 오면 그때 줄을 확정
         if (sc.turnComplete) finalizeCaption();
         if (sc.interrupted) finalizeCaption();
       }
