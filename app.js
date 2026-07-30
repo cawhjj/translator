@@ -326,45 +326,37 @@ function setStatus(state, text) {
   statusText.textContent = text;
 }
 
-// ---- Caption UI (프롬프터식 스크롤 — 줄 단위로 아래서 위로 흐름) ----
+// ---- Caption UI (프롬프터식 스크롤 — 확정된 줄은 남고, 진행 중인 줄만 갱신) ----
 function clearEmptyState() {
   if (emptyState) emptyState.remove();
 }
 
-const MAX_LINES = 50; // 화면에 유지할 최대 줄 수 (스크롤로 다시 볼 수 있어 넉넉히 유지, 넘치면 오래된 줄부터 제거)
+const MAX_LINES = 50; // 화면에 유지할 최대 줄 수 (스크롤로 다시 볼 수 있음. 넘치면 오래된 줄부터 제거)
+let captionIdleTimer = null;
+let captionHardCapTimer = null;
+let lastFinalizedText = "";
 
 function startNewCaptionBubble() {
   clearEmptyState();
   segmentIndex++;
-  // 이전 줄은 '현재 진행 중' 강조를 해제(과거 줄로 전환)
   if (currentCaptionEl) currentCaptionEl.classList.remove("current");
 
   const line = document.createElement("div");
-  line.className = "line current";
+  line.className = "line current spk" + (segmentIndex % 4);
   captionArea.appendChild(line);
   currentCaptionEl = line;
 
-  // 자막이 너무 많이 쌓이면 화면이 무거워지므로, 오래된 줄부터 정리
+  // 오래된 줄 정리 (화면이 무거워지는 것 방지)
   const lines = captionArea.querySelectorAll(".line");
   if (lines.length > MAX_LINES) {
     for (let i = 0; i < lines.length - MAX_LINES; i++) lines[i].remove();
   }
 
-  // 문장부호가 없거나 쉬지 않고 계속 말하는 경우를 대비한 강제 컷 타이머.
-  // 화자가 실제로 말을 멈추면(무음 감지, armCaptionIdleTimer) 그때 자연스럽게 끊기고,
-  // 이 타이머는 "계속 쉬지 않고 말하는 극단적인 경우"에만 작동하는 최후의 안전장치라
-  // 간격을 길게 둬서 대화 내용이 조각조각 끊기지 않게 함
-  if (captionHardCapTimer) clearTimeout(captionHardCapTimer);
-  captionHardCapTimer = setTimeout(() => {
-    if (lastFullCumulativeText) committedOffset = lastFullCumulativeText.length;
-    finalizeCaption();
-  }, 25000);
-
+  captionArea.scrollTop = captionArea.scrollHeight;
   return line;
 }
-let captionIdleTimer = null;
-let captionHardCapTimer = null;
 
+// 범용 모델용: 텍스트 조각이 하나씩 추가로 들어옴 → 현재 줄에 이어붙임
 function appendPartialText(text) {
   if (!currentCaptionEl) startNewCaptionBubble();
   currentCaptionEl.textContent += text;
@@ -373,37 +365,23 @@ function appendPartialText(text) {
   armCaptionIdleTimer();
 }
 
-// 통역 전용 모델은 매번 "지금까지의 전체 문장(fullText)"을 다시 보내므로,
-// 이미 확정해서 보여준 부분(committedOffset)은 잘라내고 그 뒤에 남은 부분만 표시함
-let lastFullCumulativeText = "";
-let committedOffset = 0;
-
+// 통역 전용 모델용: 매번 "현재 발화의 전체 문장"을 다시 보냄 → 현재 줄을 통째로 교체
+// (offset 잘라내기 방식은 오작동이 잦아, 현재 진행 중인 한 줄만 갱신하는 방식으로 단순화)
 function replaceCaptionText(fullText) {
-  lastFullCumulativeText = fullText;
-  if (fullText.length < committedOffset) committedOffset = 0; // 새 턴이 시작된 것으로 판단
-
-  const displayText = fullText.slice(committedOffset);
   if (!currentCaptionEl) startNewCaptionBubble();
-  currentCaptionEl.textContent = displayText;
+  currentCaptionEl.textContent = fullText;
   captionArea.scrollTop = captionArea.scrollHeight;
-  pushCaptionToGlasses(displayText, false);
-
-  // 한국어는 짧은 대답도 대부분 마침표로 끝나서, 문장부호로 끊으면 거의 매번
-  // 끊어지므로 사용하지 않음. 실제 침묵(휴지)이 있을 때만 다음 줄로 넘어감
+  pushCaptionToGlasses(fullText, false);
   armCaptionIdleTimer();
 }
 
-let lastFinalizedText = "";
-
 function armCaptionIdleTimer() {
-  // 일정 시간 새 텍스트가 없으면 자동으로 확정 처리
-  // (짧은 침묵까지 끊으면 하나의 생각이 여러 줄로 쪼개지므로 기준을 넉넉하게 둠)
+  // 일정 시간 새 텍스트가 없으면(=화자가 말을 멈추면) 현재 줄을 확정하고 다음 줄 준비.
+  // 확정된 줄은 화면에 그대로 남고, 새 발화는 새 줄로 시작됨 → 문맥이 쌓임
   if (captionIdleTimer) clearTimeout(captionIdleTimer);
-  captionIdleTimer = setTimeout(() => {
-    committedOffset = lastFullCumulativeText.length;
-    finalizeCaption();
-  }, 5000);
+  captionIdleTimer = setTimeout(finalizeCaption, 3000);
 }
+
 function finalizeCaption() {
   if (captionIdleTimer) {
     clearTimeout(captionIdleTimer);
@@ -415,23 +393,19 @@ function finalizeCaption() {
   }
   if (!currentCaptionEl) return;
   const finalText = currentCaptionEl.textContent.trim();
-  const line = currentCaptionEl;
 
-  // 직전 확정 문장과 완전히 동일하면(모델이 같은 내용을 다시 보낸 경우) 중복 표시하지 않음
-  if (finalText && finalText === lastFinalizedText) {
-    line.remove();
+  // 내용이 비었거나 직전 확정 문장과 완전히 동일하면 그 줄은 버림(중복 방지)
+  if (!finalText || finalText === lastFinalizedText) {
+    currentCaptionEl.remove();
     currentCaptionEl = null;
     return;
   }
 
-  // 확정되면 '진행 중' 강조를 빼고, 지난 줄로 표시 + 구간별 색상으로 구분
-  line.classList.remove("current");
-  line.classList.add("spk" + (segmentIndex % 4));
-  line.textContent = finalText;
-
-  currentCaptionEl = null;
-  if (finalText) lastFinalizedText = finalText;
+  // 확정: '진행 중' 강조만 해제하고 줄은 그대로 화면에 남겨둠(사라지지 않음)
+  currentCaptionEl.classList.remove("current");
+  lastFinalizedText = finalText;
   pushCaptionToGlasses(finalText, true);
+  currentCaptionEl = null;
 }
 
 // ---- PCM16 downsampling ----
@@ -872,8 +846,6 @@ async function startRecording() {
 
   isRecording = true;
   reconnectAttempts = 0;
-  committedOffset = 0;
-  lastFullCumulativeText = "";
   lastFinalizedText = "";
   micBtn.classList.add("recording");
   micBtn.textContent = "⏹️";
