@@ -8,12 +8,16 @@ function setStatus(state, text) {
   statusText.textContent = text;
 }
 
-const MAX_LINES = 6; // 화면에 유지할 최대 줄 수 (넘치면 위로 흘려보냄)
+const MAX_LINES = 30; // 화면에 유지할 최대 줄 수 (스크롤로 넘어가므로 넉넉히 유지)
 let currentLineEl = null;
 let lastFinalTs = 0;
 
 function clearEmpty() {
   if (emptyMsg) emptyMsg.remove();
+}
+
+function scrollToBottom() {
+  feed.scrollTop = feed.scrollHeight;
 }
 
 function speakerClass(speaker) {
@@ -40,6 +44,7 @@ function startNewLine(speaker) {
   feed.appendChild(el);
   currentLineEl = el;
   pruneLines();
+  scrollToBottom();
   return el;
 }
 
@@ -59,6 +64,7 @@ function render(data) {
   if (speaker !== undefined) currentLineEl.dataset.speaker = String(speaker);
   currentLineEl.textContent = text;
   currentLineEl.classList.toggle("partial", !isFinal);
+  scrollToBottom();
   if (isFinal) {
     currentLineEl.dataset.final = "1";
     lastFinalTs = Date.now();
