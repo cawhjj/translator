@@ -358,26 +358,19 @@ function startNewCaptionBubble() {
   captionHardCapTimer = setTimeout(() => {
     if (lastFullCumulativeText) committedOffset = lastFullCumulativeText.length;
     finalizeCaption();
-  }, 15000);
+  }, 25000);
 
   return line;
 }
 let captionIdleTimer = null;
 let captionHardCapTimer = null;
 
-// 문장이 마침표/물음표/느낌표로 끝났으면 쉬지 않고 말을 이어가도 즉시 확정
-const SENTENCE_END_RE = /[.!?。!?]\s*$/;
-
 function appendPartialText(text) {
   if (!currentCaptionEl) startNewCaptionBubble();
   currentCaptionEl.textContent += text;
   captionArea.scrollTop = captionArea.scrollHeight;
   pushCaptionToGlasses(currentCaptionEl.textContent, false);
-  if (SENTENCE_END_RE.test(currentCaptionEl.textContent.trim())) {
-    finalizeCaption();
-  } else {
-    armCaptionIdleTimer();
-  }
+  armCaptionIdleTimer();
 }
 
 // 통역 전용 모델은 매번 "지금까지의 전체 문장(fullText)"을 다시 보내므로,
@@ -395,26 +388,21 @@ function replaceCaptionText(fullText) {
   captionArea.scrollTop = captionArea.scrollHeight;
   pushCaptionToGlasses(displayText, false);
 
-  // 계속 말이 이어지면 조용해지는 순간이 안 와서 한 구간에 계속 머무르므로,
-  // 문장이 끝나는 지점을 감지하면 쉬지 않고 말해도 바로 다음으로 넘어감
-  if (SENTENCE_END_RE.test(displayText.trim())) {
-    committedOffset = fullText.length;
-    finalizeCaption();
-  } else {
-    armCaptionIdleTimer();
-  }
+  // 한국어는 짧은 대답도 대부분 마침표로 끝나서, 문장부호로 끊으면 거의 매번
+  // 끊어지므로 사용하지 않음. 실제 침묵(휴지)이 있을 때만 다음 줄로 넘어감
+  armCaptionIdleTimer();
 }
 
 let lastFinalizedText = "";
 
 function armCaptionIdleTimer() {
   // 일정 시간 새 텍스트가 없으면 자동으로 확정 처리
-  // (연속 스트리밍 모델은 turnComplete를 안 보낼 수 있어 안전장치로 둠)
+  // (짧은 침묵까지 끊으면 하나의 생각이 여러 줄로 쪼개지므로 기준을 넉넉하게 둠)
   if (captionIdleTimer) clearTimeout(captionIdleTimer);
   captionIdleTimer = setTimeout(() => {
     committedOffset = lastFullCumulativeText.length;
     finalizeCaption();
-  }, 2500);
+  }, 5000);
 }
 function finalizeCaption() {
   if (captionIdleTimer) {
